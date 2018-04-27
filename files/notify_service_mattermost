@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+
+# Notifies a service state in a Mattermost channel.
+
+# Environment:
+# NOTIFICATIONTYPE - Type of the notification
+# HOSTNAME - Name of the host
+# SERVICENAME - Name of the service
+# SERVICESTATE - State of the host
+# ICINGAWEB_URL - URL to Icingaweb (Including https:// and with no trailing slash)
+# MATTERMOST_HOOK - Hook URL of the Mattermost server
+
+set -e
+set -o nounset
+set -o pipefail
+
+msg="${NOTIFICATIONTYPE}: Service ${SERVICENAME}@${HOSTNAME} is ${SERVICESTATE}: ${ICINGAWEB_URL}/dashboard#!/monitoring/service/show?host=${HOSTNAME}&service=${SERVICENAME}"
+
+curl -X POST -H "Content-Type: application/json" --data "{ \"text\": \"${msg}\" }" "${MATTERMOST_HOOK}"

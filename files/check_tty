@@ -1,0 +1,118 @@
+#!/usr/bin/env bash
+
+# Checks if a TTY is idling for a long time.
+
+# Parameters:
+# -c - Amount of minutes until the check is critical (defaults to 30)
+# -w - Amount of minutes until the check is in a warning state (defaults to 20)
+
+set -e
+set -o nounset
+set -o pipefail
+
+# Parameters
+crit=30
+warn=20
+
+usage() {
+	echo "Usage: ${0} -w<warning mins> -c<critical mins>"
+	exit 3
+}
+
+while getopts ":w:c:" opt; do
+	case "${opt}" in
+		w)
+			warn="${OPTARG}"
+			;;
+		c)
+			crit="${OPTARG}"
+			;;
+		\?)
+			echo "Invalid option: -${OPTARG}"
+			usage
+			;;
+		:)
+			echo "Option -${OPTARG} requires an argument"
+			usage
+			;;
+	esac
+done
+
+crithrs=$((crit / 60))
+critmins=$((crit % 60))
+warnhrs=$((warn / 60))
+warnmins=$((warn % 60))
+
+ok=OK
+nIdle=0
+nConnected=0
+users=''
+
+while IFS=' ' read -r name line _ _ idle _; do
+	nConnected=$((nConnected + 1))
+	# Non-tty connections
+	[ "${line:0:3}" != tty ] && continue
+	# Non-idle connections
+	[ "${idle}" = . ] && continue
+	# Parse time
+	hrs="$(echo "${idle}" | cut -d':' -f1)"
+	mins="$(echo "${idle}" | cut -d':' -f2)"
+	# Check idle
+	# This hour
+	if [ "${hrs}" = "${crithrs}" ] && [ "${mins}" -ge "${critmins}" ]; then
+		ok=CRITICAL
+		users="${users}
+${name} idles on ${line} for ${idle} now"
+		nIdle=$((nIdle + 1))
+		continue
+	fi
+	# Next hour
+	if [ "${hrs}" -gt "${crithrs}" ]; then
+		ok=CRITICAL
+		users="${users}
+${name} idles on ${line} for ${idle} now"
+		nIdle=$((nIdle + 1))
+		continue
+	fi
+	# This hour
+	if [ "${hrs}" = "${warnmins}" ] && [ "${mins}" -ge "${warnmins}" ]; then
+		[ "${ok}" = CRITICAL ] || ok=WARNING
+		users="${users}
+${name} idles on ${line} for ${idle} now"
+		nIdle=$((nIdle + 1))
+		continue
+	fi
+	# Next hour
+	if [ "${hrs}" -gt "${warnhrs}" ]; then
+		[ "${ok}" = CRITICAL ] || ok=WARNING
+		users="${users}
+${name} idles on ${line} for ${idle} now"
+		nIdle=$((nIdle + 1))
+		continue
+	fi
+done < <(who -u)
+
+if [ "${nIdle}" = 1 ]; then
+	msg="${nIdle} of ${nConnected} users is idling."
+else
+	msg="${nIdle} of ${nConnected} users are idling."
+fi
+
+# Return results
+echo "tty ${ok}: ${msg} | nidle=${nIdle};;;0;${nConnected}"
+echo "${users}" | xargs
+
+case "${ok}" in
+	OK)
+		exit 0
+		;;
+	WARNING)
+		exit 1
+		;;
+	CRITICAL)
+		exit 2
+		;;
+	*)
+		exit 3
+		;;
+esac

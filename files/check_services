@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+
+# Checks if any systemd services failed (systemctl --failed).
+
+# Parameters:
+# -c - Amount of services that need to be failed in order to return a critical state (defaults to 1)
+# -w - Amount of services that need to be failed in order to return a warning state (defaults to 1)
+
+set -e
+set -o nounset
+set -o pipefail
+
+# Parameters
+crit=1
+warn=1
+
+usage() {
+	echo "Usage: ${0} -w<warning> -c<critical>"
+	exit 3
+}
+
+while getopts ":w:c:" opt; do
+	case "${opt}" in
+		w)
+			warn="${OPTARG}"
+			;;
+		c)
+			crit="${OPTARG}"
+			;;
+		\?)
+			echo "Invalid option: -${OPTARG}"
+			usage
+			;;
+		:)
+			echo "Option -${OPTARG} requires an argument"
+			usage
+			;;
+	esac
+done
+
+# Parse systemctl
+output="$(systemctl --no-legend --no-pager --state=failed | cut -d' ' -f1)"
+if [ -z "${output}" ]; then
+	ncrit=0
+else
+	ncrit="$(echo "${output}" | wc -l)"
+fi
+
+# Parse state
+ok=OK
+if [ "${ncrit}" -ge "${crit}" ]; then
+	ok=CRITICAL
+elif [ "${ncrit}" -ge "${warn}" ]; then
+	ok=WARNING
+fi
+
+# Return results
+echo "services ${ok}: ${ncrit} service(s) failed. | ncrit=${ncrit};${warn};${crit}"
+echo "${output}"
+case "${ok}" in
+	OK)
+		exit 0
+		;;
+	WARNING)
+		exit 1
+		;;
+	CRITICAL)
+		exit 2
+		;;
+	*)
+		exit 3
+		;;
+esac

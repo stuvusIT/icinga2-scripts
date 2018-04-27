@@ -1,0 +1,39 @@
+---
+- name: Create scripts directory
+  file:
+    path: "{{ icinga2_scripts_path }}"
+    state: directory
+    mode: 0755
+    owner: root
+    group: root
+
+- name: Install notification dependencies
+  apt:
+    name: "{{ item }}"
+  with_items:
+    - curl
+  when: icinga2_needs_notification_scripts
+
+- name: Copy check scripts
+  copy:
+    src: "check_{{ item }}"
+    dest: "{{ icinga2_scripts_path }}"
+    mode: 0755
+    owner: root
+    group: root
+  with_items:
+    - kernel
+    - services
+    - tty
+
+- name: Copy notification scripts
+  copy:
+    src: "notify_{{ item }}"
+    dest: "{{ icinga2_scripts_path }}"
+    mode: 0755
+    owner: root
+    group: root
+  with_items:
+    - host_mattermost
+    - service_mattermost
+  when: icinga2_needs_notification_scripts

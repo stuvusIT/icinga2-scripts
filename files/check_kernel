@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+
+# Checks if the machine needs to be rebooted in order to apply a kernel update.
+
+# Parameters:
+# -k - Path of the kernel (defaults to /vmlinuz)
+
+set -e
+set -o nounset
+set -o pipefail
+
+# Parameters
+kernel=/vmlinuz
+
+msg='Kernel is up to date.'
+ok=OK
+
+usage() {
+	echo "Usage: ${0} -k<kernel>"
+	exit 3
+}
+
+while getopts ":k:" opt; do
+	case "${opt}" in
+		k)
+			kernel="${OPTARG}"
+			;;
+		\?)
+			echo "Invalid option: -${OPTARG}"
+			usage
+			;;
+		:)
+			echo "Option -${OPTARG} requires an argument"
+			usage
+			;;
+	esac
+done
+
+if [ -f "${kernel}" ]; then
+	infile=''
+	inmem="$(uname -r)"
+	found=0
+	for part in $(file "$(readlink -f "${kernel}")"); do
+		if [ "${found}" = 1 ]; then
+			infile="${part}"
+			break
+		fi
+		[ "${part}" = version ] && found=1
+	done
+
+	if ! [ -z "${infile}" ]; then
+		if [ "${infile}" != "${inmem}" ]; then
+			msg="Kernel ${infile} is out, time to reboot."
+			ok=CRITICAL
+		fi
+	else
+		msg="${kernel} does not have a version."
+		ok=UNKNOWN
+	fi
+else
+	msg="${kernel} not found."
+	ok=WARNING
+fi
+
+# Return results
+echo "kernel ${ok}: ${msg}"
+
+case "${ok}" in
+	OK)
+		exit 0
+		;;
+	WARNING)
+		exit 1
+		;;
+	CRITICAL)
+		exit 2
+		;;
+	*)
+		exit 3
+		;;
+esac
