@@ -1,0 +1,26 @@
+galaxy_info:
+  author: Janne Heß
+  description: Common Icinga 2 scripts
+  company: stuvus (https://stuvus.uni-stuttgart.de)
+
+  license: CC-BY-SA
+
+  min_ansible_version: 2.4
+
+  platforms:
+    - name: Ubuntu
+      versions:
+        - xenial
+        - bionic
+
+  galaxy_tags:
+    - icinga
+    - check
+    - monitoring
+    - scripts
+    - script
+    - bash
+    - shell
+    - notification
+
+dependencies: []
