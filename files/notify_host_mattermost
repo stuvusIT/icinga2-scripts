@@ -13,6 +13,6 @@ set -e
 set -o nounset
 set -o pipefail
 
-msg="${NOTIFICATIONTYPE}: Host ${HOSTNAME} is ${HOSTSTATE}: ${ICINGAWEB_URL}/dashboard#!/monitoring/host/show?host=${HOSTNAME}"
+msg="${NOTIFICATIONTYPE}: Host [${HOSTNAME}](${ICINGAWEB_URL}/dashboard#!/monitoring/host/show?host=${HOSTNAME}) is ${HOSTSTATE}"
 
 curl -X POST -H "Content-Type: application/json" --data "{ \"text\": \"${msg}\" }" "${MATTERMOST_HOOK}"

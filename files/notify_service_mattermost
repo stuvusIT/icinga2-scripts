@@ -14,6 +14,6 @@ set -e
 set -o nounset
 set -o pipefail
 
-msg="${NOTIFICATIONTYPE}: Service ${SERVICENAME}@${HOSTNAME} is ${SERVICESTATE}: ${ICINGAWEB_URL}/dashboard#!/monitoring/service/show?host=${HOSTNAME}&service=${SERVICENAME}"
+msg="${NOTIFICATIONTYPE}: Service [${SERVICENAME}](${ICINGAWEB_URL}/dashboard#!/monitoring/service/show?host=${HOSTNAME}&service=${SERVICENAME})@[${HOSTNAME}](${ICINGAWEB_URL}/dashboard#!/monitoring/host/show?host=${HOSTNAME}) is ${SERVICESTATE}"
 
 curl -X POST -H "Content-Type: application/json" --data "{ \"text\": \"${msg}\" }" "${MATTERMOST_HOOK}"
