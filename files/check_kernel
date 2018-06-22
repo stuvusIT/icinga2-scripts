@@ -5,15 +5,12 @@
 # Parameters:
 # -k - Path of the kernel (defaults to /vmlinuz)
 
-set -e
-set -o nounset
-set -o pipefail
+. ./common.sh
+checkName=kernel
+checkOutput='Kernel is up to date.'
 
 # Parameters
 kernel=/vmlinuz
-
-msg='Kernel is up to date.'
-ok=OK
 
 usage() {
 	echo "Usage: ${0} -k<kernel>"
@@ -50,32 +47,16 @@ if [ -f "${kernel}" ]; then
 
 	if ! [ -z "${infile}" ]; then
 		if [ "${infile}" != "${inmem}" ]; then
-			msg="Kernel ${infile} is out, time to reboot."
-			ok=CRITICAL
+			checkOutput="Kernel ${infile} is out, time to reboot."
+			checkState=CRITICAL
 		fi
 	else
-		msg="${kernel} does not have a version."
-		ok=UNKNOWN
+		checkOutput="${kernel} does not have a version."
+		checkState=UNKNOWN
 	fi
 else
-	msg="${kernel} not found."
-	ok=WARNING
+	checkOutput="${kernel} not found."
+	checkState=WARNING
 fi
 
-# Return results
-echo "kernel ${ok}: ${msg}"
-
-case "${ok}" in
-	OK)
-		exit 0
-		;;
-	WARNING)
-		exit 1
-		;;
-	CRITICAL)
-		exit 2
-		;;
-	*)
-		exit 3
-		;;
-esac
+checkReturn

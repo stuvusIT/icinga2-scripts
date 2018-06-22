@@ -6,9 +6,8 @@
 # -c - Amount of services that need to be failed in order to return a critical state (defaults to 1)
 # -w - Amount of services that need to be failed in order to return a warning state (defaults to 1)
 
-set -e
-set -o nounset
-set -o pipefail
+. ./common.sh
+checkName=services
 
 # Parameters
 crit=1
@@ -47,27 +46,12 @@ else
 fi
 
 # Parse state
-ok=OK
 if [ "${ncrit}" -ge "${crit}" ]; then
-	ok=CRITICAL
+	checkState=CRITICAL
 elif [ "${ncrit}" -ge "${warn}" ]; then
-	ok=WARNING
+	checkState=WARNING
 fi
 
-# Return results
-echo "services ${ok}: ${ncrit} service(s) failed. | ncrit=${ncrit};${warn};${crit}"
-echo "${output}"
-case "${ok}" in
-	OK)
-		exit 0
-		;;
-	WARNING)
-		exit 1
-		;;
-	CRITICAL)
-		exit 2
-		;;
-	*)
-		exit 3
-		;;
-esac
+checkOutput="${ncrit} service(s) failed."
+checkPerfdata="ncrit=${ncrit};${warn};${crit}"
+checkReturn

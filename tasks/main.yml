@@ -14,6 +14,16 @@
     - curl
   when: icinga2_needs_notification_scripts
 
+- name: Copy common files
+  copy:
+    src: "{{ item }}"
+    dest: "{{ icinga2_scripts_path }}"
+    mode: 0644
+    owner: root
+    group: root
+  with_items:
+    - common.sh
+
 - name: Copy check scripts
   copy:
     src: "check_{{ item }}"
