@@ -6,9 +6,8 @@
 # -c - Amount of minutes until the check is critical (defaults to 30)
 # -w - Amount of minutes until the check is in a warning state (defaults to 20)
 
-set -e
-set -o nounset
-set -o pipefail
+. ./common.sh
+checkName=tty
 
 # Parameters
 crit=30
@@ -43,7 +42,6 @@ critmins=$((crit % 60))
 warnhrs=$((warn / 60))
 warnmins=$((warn % 60))
 
-ok=OK
 nIdle=0
 nConnected=0
 users=''
@@ -60,7 +58,7 @@ while IFS=' ' read -r name line _ _ idle _; do
 	# Check idle
 	# This hour
 	if [ "${hrs}" = "${crithrs}" ] && [ "${mins}" -ge "${critmins}" ]; then
-		ok=CRITICAL
+		checkState=CRITICAL
 		users="${users}
 ${name} idles on ${line} for ${idle} now"
 		nIdle=$((nIdle + 1))
@@ -68,7 +66,7 @@ ${name} idles on ${line} for ${idle} now"
 	fi
 	# Next hour
 	if [ "${hrs}" -gt "${crithrs}" ]; then
-		ok=CRITICAL
+		checkState=CRITICAL
 		users="${users}
 ${name} idles on ${line} for ${idle} now"
 		nIdle=$((nIdle + 1))
@@ -76,7 +74,7 @@ ${name} idles on ${line} for ${idle} now"
 	fi
 	# This hour
 	if [ "${hrs}" = "${warnmins}" ] && [ "${mins}" -ge "${warnmins}" ]; then
-		[ "${ok}" = CRITICAL ] || ok=WARNING
+		[ "${checkState}" = CRITICAL ] || checkState=WARNING
 		users="${users}
 ${name} idles on ${line} for ${idle} now"
 		nIdle=$((nIdle + 1))
@@ -84,7 +82,7 @@ ${name} idles on ${line} for ${idle} now"
 	fi
 	# Next hour
 	if [ "${hrs}" -gt "${warnhrs}" ]; then
-		[ "${ok}" = CRITICAL ] || ok=WARNING
+		[ "${checkState}" = CRITICAL ] || checkState=WARNING
 		users="${users}
 ${name} idles on ${line} for ${idle} now"
 		nIdle=$((nIdle + 1))
@@ -93,26 +91,10 @@ ${name} idles on ${line} for ${idle} now"
 done < <(who -u)
 
 if [ "${nIdle}" = 1 ]; then
-	msg="${nIdle} of ${nConnected} users is idling."
+	checkOutput="${nIdle} of ${nConnected} users is idling."
 else
-	msg="${nIdle} of ${nConnected} users are idling."
+	checkOutput="${nIdle} of ${nConnected} users are idling."
 fi
 
-# Return results
-echo "tty ${ok}: ${msg} | nidle=${nIdle};;;0;${nConnected}"
-echo "${users}" | xargs
-
-case "${ok}" in
-	OK)
-		exit 0
-		;;
-	WARNING)
-		exit 1
-		;;
-	CRITICAL)
-		exit 2
-		;;
-	*)
-		exit 3
-		;;
-esac
+checkPerfdata="nIdle=${nIdle};;;0;${nConnected}"
+checkReturn
