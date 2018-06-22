@@ -1,0 +1,133 @@
+#!/usr/bin/env bash
+
+# Checks if all APs in Unifi are reachable and up to date.
+# Disabled APs are ignored.
+#
+# Parameters:
+# -h - HTTPS URL to connect to (from https:// without trailing slash)
+# -u - User to connect with
+# -s - Site to query (defaults to default)
+
+# Environment:
+# UNIFI_PASSWORD - Password to connect with
+
+. ./common.sh
+checkName=unifi
+
+url=
+user=
+site=default
+cookie=''
+
+usage() {
+	echo "Usage: ${0} -h <URL> -u <User> -s <site>"
+	exit 3
+}
+
+while getopts ":h:u:s:" opt; do
+	case "${opt}" in
+		h)
+			url="${OPTARG}"
+			;;
+		u)
+			user="${OPTARG}"
+			;;
+		s)
+			site="${OPTARG}"
+			;;
+		\?)
+			echo "Invalid option: -${OPTARG}"
+			usage
+			;;
+		:)
+			echo "Option -${OPTARG} requires an argument"
+			usage
+			;;
+	esac
+done
+
+if [ -z "${url}" ]; then
+	echo "Please specify an URL to connect to"
+	usage
+fi
+if [ -z "${user}" ]; then
+	echo "Please specify a user to connect with"
+	usage
+fi
+if [ -z "${UNIFI_PASSWORD}" ]; then
+	echo "Please specify the password to connect with as \$UNIFI_PASSWORD"
+	usage
+fi
+
+# Log in
+loginBody="{ \"username\": \"${user}\", \"password\": \"${UNIFI_PASSWORD}\" }"
+return="$(curl -LsSD - --referer "${url}/login" --data @<(echo "${loginBody}") "${url}/api/login")"
+
+code="$(echo "${return}" | grep ^HTTP/ | cut -d' ' -f2)"
+if [ "${code}" != 200 ]; then
+	checkState=UNKNOWN
+	checkOutput="Login failed with HTTP error ${code}"
+	checkReturn
+fi
+
+cookie="$(echo "${return}" | grep ^Set-Cookie:\ unifises= | cut -d' ' -f2 | cut -d';' -f1)"
+if [ -z "${cookie}" ]; then
+	checkState=UNKNOWN
+	checkOutput="No login cookie was given"
+	checkReturn
+fi
+
+# Fetch device stats
+data="$(curl -kLsSD - -b "${cookie}" "${url}/api/s/${site}/stat/device")"
+code="$(echo "${data}" | grep ^HTTP/ | cut -d' ' -f2)"
+if [ "${code}" != 200 ]; then
+	checkState=UNKNOWN
+	checkOutput="Device stats polling failed with HTTP error ${code}"
+	checkReturn
+fi
+# The resulting JSON is a Serial-Values dict
+json="$(echo "${data}" | grep '^{' | jq '.data | map({(.serial): (.)}) | add')"
+
+# Log out
+curl -kLsS -b "${cookie}" "${url}/logout" > /dev/null
+
+# Count APs
+nTotal="$(echo "${json}" | jq '. | length')"
+
+# Upgrades (only if enabled and reachable)?
+upgradable="$(echo "${json}" | jq -r '.[] | select(.disabled!=true and .state!=0 and .upgradable==true) | "Pending update for \(.serial) (\(.name))"')"
+
+# Unreachable devices (only if enabled)?
+unreachable="$(echo "${json}" | jq -r '.[] | select(.disabled!=true and .state==0) | "Unreachable device \(.serial) (\(.name))"')"
+
+# Format output
+nUnreachable="$(echo "${unreachable}" | sed '/^\s*$/d' | wc -l)"
+if [ -n "${unreachable}" ]; then
+	if [ "${nUnreachable}" = 1 ]; then
+		checkOutput="${nUnreachable} device is unreachable"
+	else
+		checkOutput="${nUnreachable} devices are unreachable"
+	fi
+	checkState=WARNING
+	checkDetails="${unreachable}"
+fi
+nUpgradable="$(echo "${upgradable}" | sed '/^\s*$/d' | wc -l)"
+if [ -n "${upgradable}" ]; then
+	if [ "${nUnreachable}" = 1 ]; then
+		checkOutput="${nUpgradable} device is upgradable"
+	else
+		checkOutput="${nUpgradable} devices are upgradable"
+	fi
+	checkState=CRITICAL
+	if [ -n "${checkDetails}" ]; then
+		checkDetails="${upgradable}
+${checkDetails}"
+	else
+		checkDetails="${upgradable}"
+	fi
+fi
+
+# Format perfdata
+checkPerfdata="upgradable=${nUpgradable};;;0;${nTotal} unreachable=${nUnreachable};;;0;${nTotal}"
+
+checkReturn

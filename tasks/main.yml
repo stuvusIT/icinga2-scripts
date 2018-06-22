@@ -35,6 +35,7 @@
     - kernel
     - services
     - tty
+    - unifi
 
 - name: Copy notification scripts
   copy:
