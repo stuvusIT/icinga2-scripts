@@ -5,7 +5,7 @@
 # Parameters:
 # -k - Path of the kernel (defaults to /vmlinuz)
 
-. ./common.sh
+. "$(dirname "${0}")/common.sh"
 checkName=kernel
 checkOutput='Kernel is up to date.'
 
