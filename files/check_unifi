@@ -11,7 +11,7 @@
 # Environment:
 # UNIFI_PASSWORD - Password to connect with
 
-. ./common.sh
+. "$(dirname "${0}")/common.sh"
 checkName=unifi
 
 url=
