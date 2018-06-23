@@ -48,8 +48,10 @@ users=''
 
 while IFS=' ' read -r name line _ _ idle _; do
 	nConnected=$((nConnected + 1))
-	# Non-tty connections
-	[ "${line:0:3}" != tty ] && continue
+	# Non-tty/hvc connections
+	if [ "${line:0:3}" != tty ] && [ "${line:0:3}" != hvc ]; then
+		continue
+	fi
 	# Non-idle connections
 	[ "${idle}" = . ] && continue
 	# Parse time
