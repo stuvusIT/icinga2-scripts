@@ -1,4 +1,4 @@
-# icinga-scripts
+# icinga2-scripts
 
 This role installs commonly used scripts for Icinga 2.
 
@@ -27,11 +27,11 @@ Ubuntu
 ```yml
 - hosts: all
   roles:
-  - icinga-scripts
+  - icinga2-scripts
 
 - hosts: icinga
   roles:
-  - icinga-scripts
+  - icinga2-scripts
     icinga2_needs_notification_scripts: true
 ```
 
