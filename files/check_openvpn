@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+
+# Checks if an OpenVPN is avalilable and working.
+
+# Parameters:
+# -c - OpenVPN configuraton that should be used
+# -h - Host name that should be reached through the openvpn
+
+. "$(dirname "${0}")/common.sh"
+checkName=openvpn
+
+# Parameters
+crit=1
+warn=10
+packet_loss=${warn}
+
+usage() {
+	echo "Usage: ${0} -c<config files> -h<host name>"
+	exit 3
+}
+
+while getopts ":h:c:" opt; do
+	case "${opt}" in
+		c)
+			config="${OPTARG}"
+			;;
+		h)
+			host="${OPTARG}"
+			;;
+		\?)
+			echo "Invalid option: -${OPTARG}"
+			usage
+			;;
+		:)
+			echo "Option -${OPTARG} requires an argument"
+			usage
+			;;
+	esac
+done
+
+output="$(timeout -k 1 6 openvpn --config $config || true )"
+output_cleaned="$(echo $output | grep 'Initialization Sequence Completed' || true)"
+#echo $output_cleaned
+if [ -z "${output_cleaned}" ]; then
+	echo "Failed"
+	crit=1
+	warn=1
+else
+	$(timeout -k 1 20 openvpn --config $config &>> /dev/null &)
+	output_ping="$(ping -c 10 $host)"
+	if [[ $? == 0 ]]; then
+		packet_loss=$(echo $output_ping | grep -oP '\d+(?=% packet loss)')
+		dns_query_time=$(dig +noall +stats google.de | grep -oP "(?<=Query time: )\d+"$)
+		warn=packet_loss
+		crit=0
+	else
+		warn=1
+		crit=1
+	fi
+fi
+
+
+checkOutput="OpenVPN is working."
+# Parse state
+if [[ "${crit}" -gt 0 ]]; then
+	checkState=CRITICAL
+	checkOutput="OpenVPN is not working."
+elif [[ "${packet_loss}" -gt ${warn} ]]; then
+	checkState=WARNING
+	checkOutput="OpenVPN might be working."
+fi
+
+checkPerfdata="packet_loss=${packet_loss};${warn};${crit}"
+checkDetails="packet loss: ${packet_loss}"
+checkReturn
