@@ -37,7 +37,7 @@ if [ -f "${kernel}" ]; then
 	infile=''
 	inmem="$(uname -r)"
 	found=0
-	for part in $(file "$(readlink -f "${kernel}")"); do
+	for part in $(file -L "$(readlink -f "${kernel}")"); do
 		if [ "${found}" = 1 ]; then
 			infile="${part}"
 			break
