@@ -32,6 +32,7 @@
     owner: root
     group: root
   with_items:
+    - free
     - kernel
     - services
     - tty
