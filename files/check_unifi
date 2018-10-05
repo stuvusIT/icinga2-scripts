@@ -70,7 +70,7 @@ if [ "${code}" != 200 ]; then
 	checkReturn
 fi
 
-cookie="$(echo "${return}" | grep ^Set-Cookie:\ unifises= | cut -d' ' -f2 | cut -d';' -f1)"
+cookie="$(echo "${return}" | grep -i ^Set-Cookie:\ unifises= | cut -d' ' -f2 | cut -d';' -f1)"
 if [ -z "${cookie}" ]; then
 	checkState=UNKNOWN
 	checkOutput="No login cookie was given"
@@ -86,7 +86,7 @@ if [ "${code}" != 200 ]; then
 	checkReturn
 fi
 # The resulting JSON is a Serial-Values dict
-json="$(echo "${data}" | grep '^{' | jq '.data | map({(.serial): (.)}) | add')"
+json="$(echo "${data}" | grep '^{' | jq '.data')"
 
 # Log out
 curl -kLsS -b "${cookie}" "${url}/logout" > /dev/null
