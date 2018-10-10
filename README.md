@@ -4,6 +4,7 @@ This role installs commonly used scripts for Icinga 2.
 
 Currently, the following scripts are installed:
 
+- `check_free` - Checks if the machine has enough available memory.
 - `check_kernel` - Checks if the machine needs to be rebooted in order to apply a kernel update.
 - `check_services` - Checks if any systemd services failed (systemctl --failed).
 - `check_tty` - Checks if a TTY is idling for a long time.
