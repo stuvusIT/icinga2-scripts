@@ -36,6 +36,7 @@
     owner: root
     group: root
   with_items:
+    - jenkins
     - kernel
     - services
     - tty

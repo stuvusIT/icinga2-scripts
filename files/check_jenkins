@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+
+# Checks the state of Jenkins via the Metrics Plugin.
+
+# Parameters:
+# -h - Host to connect to (default: http://localhost:8080)
+# -a - API key (must have at least the "Health Check" permission
+
+. "$(dirname "${0}")/common.sh"
+checkName=jenkins
+
+# Parameters
+hostname=http://localhost:8080
+apikey=
+
+usage() {
+	echo "Usage: ${0} -h <hostname> -a <API key>"
+	exit 3
+}
+
+while getopts ":h:a:" opt; do
+	case "${opt}" in
+		h)
+			hostname="${OPTARG}"
+			;;
+		a)
+			apikey="${OPTARG}"
+			;;
+		\?)
+			echo "Invalid option: -${OPTARG}"
+			usage
+			;;
+		:)
+			echo "Option -${OPTARG} requires an argument"
+			usage
+			;;
+	esac
+done
+
+url="${hostname}/metrics/${apikey}/healthcheck"
+
+set +e
+json="$(curl -sfL "${url}")"
+ret="${?}"
+set -e
+
+if [ "${ret}" != 0 ]; then
+	checkOutput="curl returned error ${ret}"
+	checkState=UNKNOWN
+	checkReturn
+fi
+
+# Each line will contain one failed service
+lines="$(echo "${json}" | jq -r '[to_entries[] | select(.value.healthy == false)] | map(.key) | . []')"
+nLines="$(echo "${lines}" | sed '/^\s*$/d' | wc -l)"
+
+if [ "${nLines}" = 0 ]; then
+	checkOutput="All checks are okay"
+	checkReturn
+fi
+
+checkOutput="${nLines} services failed"
+checkDetails="Failed services:
+${lines}"
+checkReturn
