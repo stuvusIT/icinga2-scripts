@@ -1,0 +1,115 @@
+#!/usr/bin/env bash
+
+# Checks the amount of available memory and outputs some details as perfdata.
+# Each parameter can be suffixed with KMGT or % to specify percent values.
+#
+# Parameters:
+# -c - Amount of memory that has to be available to not fail the check with a critical status (defaults to 5%)
+# -w - Amount of memory that has to be available to not fail the check with a warning status (defaults to 10%)
+
+. "$(dirname "${0}")/common.sh"
+checkName=memory
+
+memTotal=
+memAvailable=
+buffers=
+cached=
+
+# Parameters
+warn=10%
+crit=5%
+
+usage() {
+	echo "Usage ${0} -w<warning> -c <critical>"
+	exit 3
+}
+
+toBytes() {
+	echo "${1}" | numfmt --from=iec
+}
+
+toHuman() {
+	echo "${1}" | numfmt --from=iec --to=iec "${format}" | sed s/$/B/
+}
+
+# Converts $1 to the same unit as $2.
+# The unit suffix is not added
+toSameUnit() {
+	toConvert="${1}"
+	targetunit="${2:$((${#2}-2)):-1}"
+	# No suffix was given - these are bytes
+	if [[ "${targetunit}" =~ ^[0-9]*$ ]]; then
+		targetunit=1
+	fi
+	numfmt --from=iec --to-unit="${targetunit}" "${toConvert}"
+}
+
+# Check if we can use commas in --format
+format='--format=%f'
+set +e
+if numfmt --format=%.2f 10 &>/dev/null; then
+	format='--format=%.2f'
+fi
+set -e
+
+# Parse parameters
+while getopts ":w:c:" opt; do
+	case "${opt}" in
+		c)
+			crit="${OPTARG}"
+			;;
+		w)
+			warn="${OPTARG}"
+			;;
+		\?)
+			echo "Invalid option: -${OPTARG}"
+			usage
+			;;
+		:)
+			echo "Option -${OPTARG} requires an argument"
+			usage
+			;;
+	esac
+done
+
+# Parse meminfo
+while IFS='' read -r line; do
+	case ${line} in
+		MemTotal:*)
+			memTotal="$(toBytes "$(echo "${line}" | awk '{print $2}')K")"
+			;;
+		MemAvailable:*)
+			memAvailable="$(toBytes "$(echo "${line}" | awk '{print $2}')K")"
+			;;
+		Buffers:*)
+			buffers="$(toBytes "$(echo "${line}" | awk '{print $2}')K")"
+			;;
+		Cached:*)
+			cached="$(toBytes "$(echo "${line}" | awk '{print $2}')K")"
+			;;
+	esac
+done < /proc/meminfo
+
+# Percent?
+if [ "${crit: -1}" = % ]; then
+	crit="$(bc <<<"(${memTotal}/100)*${crit::-1}")"
+fi
+if [ "${warn: -1}" = % ]; then
+	warn="$(bc <<<"(${memTotal}/100)*${warn::-1}")"
+fi
+
+# Format output
+if [ "${memAvailable}" -lt "${crit}" ]; then
+	checkState=CRITICAL
+elif [ "${memAvailable}" -lt "${warn}" ]; then
+	checkState=WARNING
+fi
+checkOutput="$(toHuman "${memAvailable}") of memory are available"
+
+# Format perfdata
+used="$((memTotal - memAvailable))"
+checkPerfdata="used=${used}B;$(toSameUnit "${warn}" "${used}");$(toSameUnit "${crit}" "${used}");0;$(toSameUnit "${memTotal}" "${used}")"
+checkPerfdata="${checkPerfdata} buffers=${buffers}B;;;0;$(toSameUnit "${memTotal}" "${buffers}")"
+checkPerfdata="${checkPerfdata} caches=${cached}B;;;0;$(toSameUnit "${memTotal}" "${cached}")"
+
+checkReturn
