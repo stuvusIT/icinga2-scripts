@@ -55,5 +55,7 @@
     group: root
   with_items:
     - host_mattermost
+    - host_msmtp
     - service_mattermost
+    - service_msmtp
   when: icinga2_needs_notification_scripts

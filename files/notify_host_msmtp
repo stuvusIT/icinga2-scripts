@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+
+# Notifies a host state via msmtp.
+
+# Environment:
+# NOTIFICATIONTYPE - Type of the notification
+# HOSTNAME - Name of the host
+# HOSTSTATE - State of the host
+# HOSTOUTPUT - Output of the host state
+# LONGDATETIME - Date and time
+# NOTIFICATIONCOMMENT - Comment of the notification (optional)
+# NOTIFICATIONAUTHORNAME - Name of the author of the commant (optional)
+# ICINGAWEB_URL - URL to Icingaweb (Including https:// and with no trailing slash)
+# RECIPIENT - Recipient of the mail
+
+set -e
+set -o nounset
+set -o pipefail
+
+NOTIFICATION_MESSAGE="Subject: [${NOTIFICATIONTYPE}] Host ${HOSTNAME} is ${HOSTSTATE}!
+
+***** Host Monitoring *****
+${HOSTNAME} is ${HOSTSTATE}!
+Info:    ${HOSTOUTPUT}
+When:    ${LONGDATETIME}
+Host:    ${HOSTNAME}"
+
+# Comment
+if [ -n "${NOTIFICATIONCOMMENT:-}" ] ; then
+	NOTIFICATION_MESSAGE="${NOTIFICATION_MESSAGE}
+Comment by ${NOTIFICATIONAUTHORNAME}:
+  ${NOTIFICATIONCOMMENT}"
+fi
+
+# Icingaweb URL
+NOTIFICATION_MESSAGE="${NOTIFICATION_MESSAGE}
+
+${ICINGAWEB_URL}/dashboard#!/monitoring/host/show?host=${HOSTNAME}"
+
+# Send it
+echo -n "${NOTIFICATION_MESSAGE}" | msmtp "${RECIPIENT}"
