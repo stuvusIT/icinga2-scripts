@@ -98,5 +98,7 @@ else
 	checkOutput="${nIdle} of ${nConnected} users are idling."
 fi
 
+checkDetails="${users}"
+
 checkPerfdata="nIdle=${nIdle};;;0;${nConnected}"
 checkReturn
