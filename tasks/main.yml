@@ -9,17 +9,14 @@
 
 - name: Install notification dependencies
   apt:
-    name: "{{ item }}"
-  with_items:
-    - curl
+    name: curl
   when: icinga2_needs_notification_scripts
 
 - name: Install check dependencies
   apt:
-    name: "{{ item }}"
-  with_items:
-    - bc
-    - jq
+    name:
+      - bc
+      - jq
 
 - name: Copy common files
   copy:
