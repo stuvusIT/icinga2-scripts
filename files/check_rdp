@@ -10,8 +10,8 @@ from common import doCheck
 
 
 def doConn(hostname, port, setup_payload, teardown_payload, ret):
+    s = socket.socket()
     try:
-        s = socket.socket()
         t1 = time.time()
 
         # Connect
@@ -51,6 +51,8 @@ def doConn(hostname, port, setup_payload, teardown_payload, ret):
         ret['output'] = 'Problem communicating with RDP server'
         ret['details'] = e
         return (0, 0)
+    finally:
+        s.close()
     return (elapsed, setup_received)
 
 
@@ -93,7 +95,7 @@ def check(ret):
         0,                           # src-ref, 1 short
         0                            # class,   1 byte
     )
-    setup_x224 = setup_x224_header + bytes(setup_x224_cookie, 'UTF8') + \
+    setup_x224 = setup_x224_header + bytes(setup_x224_cookie, 'ASCII') + \
         setup_x224_rdp_neg_data
 
     tpkt_total_len = len(setup_x224) + 4
@@ -152,7 +154,6 @@ def check(ret):
         rec_tpkt_header['version'],         \
             rec_tpkt_header['reserved'],    \
             rec_tpkt_header['length'],      \
-                                            \
             rec_x224_header['length'],      \
             rec_x224_header['code'],        \
             rec_x224_header['dst_ref'],     \
@@ -164,13 +165,11 @@ def check(ret):
         rec_tpkt_header['version'],         \
             rec_tpkt_header['reserved'],    \
             rec_tpkt_header['length'],      \
-                                            \
             rec_x224_header['length'],      \
             rec_x224_header['code'],        \
             rec_x224_header['dst_ref'],     \
             rec_x224_header['src_ref'],     \
             rec_x224_header['class'],       \
-                                            \
             rec_nego_resp['type'],          \
             rec_nego_resp['flags'],         \
             rec_nego_resp['length'],        \
