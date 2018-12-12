@@ -1,0 +1,196 @@
+#!/usr/bin/env python3
+
+# Modified version of http://troels.arvin.dk/code/nagios/check_x224
+
+import socket
+import struct
+import time
+from argparse import ArgumentParser
+from common import doCheck
+
+
+def doConn(hostname, port, setup_payload, teardown_payload, ret):
+    s = socket.socket()
+    try:
+        t1 = time.time()
+
+        # Connect
+        s.connect((hostname, port))
+        sent_bytes = s.send(setup_payload)
+        if sent_bytes != len(setup_payload):
+            ret['state'] = 'CRITICAL'
+            ret['output'] = 'Could not send RDP setup payload'
+            return (0, 0)
+        t2 = time.time()
+
+        # Disconnect
+        sent_bytes = s.send(teardown_payload)
+        if sent_bytes != len(teardown_payload):
+            ret['state'] = 'CRITICAL'
+            ret['output'] = 'Could not send RDP teardown payload'
+            return (0, 0)
+        setup_received = s.recv(1024)
+        s.close()
+
+        elapsed = t2 - t1
+
+        l_setup_received = len(setup_received)
+
+        # 2 possible lengths
+        if l_setup_received != 11 and l_setup_received != 19:
+            ret['state'] = 'CRITICAL'
+            ret['output'] = 'RDP response of unexpected length'
+            return (0, 0)
+    except socket.error as e:
+        ret['state'] = 'CRITICAL'
+        ret['output'] = 'Could not set up connection'
+        ret['details'] = e
+        return (0, 0)
+    except Exception as e:
+        ret['state'] = 'CRITICAL'
+        ret['output'] = 'Problem communicating with RDP server'
+        ret['details'] = e
+        return (0, 0)
+    finally:
+        s.close()
+    return (elapsed, setup_received)
+
+
+def check(ret):
+    ret['name'] = 'rdp'
+    # Parse options
+    parser = ArgumentParser(description='Check an RDP host')
+    parser.add_argument('-H', '--host', dest='host', default='127.0.0.1',
+                        help='Hostname to connect to')
+    parser.add_argument('-p', '--port', dest='port', default=3389, type=int,
+                        help='Port to connect to')
+    parser.add_argument('-w', '--warning', dest='warn', type=int, default=5,
+                        help='Seconds until check is warning')
+    parser.add_argument('-c', '--critical', dest='crit', type=int,
+                        default=10, help='Seconds until check is critical')
+    parser.add_argument('-t', '--timeout', dest='timeout', type=int,
+                        default=15, help='Seconds until the check times out')
+
+    options = parser.parse_args()
+
+    # Set timeout
+    socket.setdefaulttimeout(options.timeout)
+
+    # Prepare structures
+    setup_x224_cookie = 'Cookie: mstshash=\r\n'
+    setup_x224_rdp_neg_data = struct.pack(  # little-endian here, it seems ?
+        '<BBHI',
+        1,  # type
+        0,  # flags
+        8,  # length
+        3,  # TLS + CredSSP
+    )
+    setup_x224_header = struct.pack(
+        '!BBHHB',
+        len(setup_x224_cookie)+6+8,  # length,  1 byte
+                                     #  6: length of this header, excluding length byte
+                                     #  8: length of setup_x224_rdp_neg_data (static)
+        224,                         # code,    1 byte (224 = 0xe0 = connection request)
+        0,                           # dst-ref, 1 short
+        0,                           # src-ref, 1 short
+        0                            # class,   1 byte
+    )
+    setup_x224 = setup_x224_header + bytes(setup_x224_cookie, 'ASCII') + \
+        setup_x224_rdp_neg_data
+
+    tpkt_total_len = len(setup_x224) + 4
+    # 4 is the static size of a tpkt header
+    setup_tpkt_header = struct.pack(
+        '!BBH',
+        3,                          # version,  1 byte
+        0,                          # reserved, 1 byte
+        tpkt_total_len              # len,      1 short
+    )
+
+    setup_payload = setup_tpkt_header + setup_x224
+
+    teardown_payload = struct.pack(
+        '!BBHBBBBBBB',
+        3,                          # tpkt version,  1 byte
+        0,                          # tpkt reserved, 1 byte
+        11,                         # tpkt len,      1 short
+        6,                          # x224 len,      1 byte
+        128,                        # x224 code,     1 byte
+        0,                          # x224 ?,        1 byte
+        0,                          # x224 ?,        1 byte
+        0,                          # x224 ?,        1 byte
+        0,                          # x224 ?,        1 byte
+        0                           # x224 ?,        1 byte
+    )
+
+    elapsed, rec = doConn(options.host, options.port,
+                          setup_payload, teardown_payload, ret)
+
+    if ret['state'] != 'OK':
+        return
+
+    ret['perfdata'] = 'time={:.4f}s;{};{};{};{}'.format(elapsed,
+                                                        options.warn,
+                                                        options.crit,
+                                                        0,
+                                                        options.timeout)
+
+    if elapsed > options.crit:
+        ret['state'] = 'CRITICAL'
+        ret['output'] = 'RDP connection setup time was too long'
+        return
+    if elapsed > options.warn:
+        ret['state'] = 'WARNING'
+        ret['output'] = 'RDP connection setup time was too long'
+        return
+
+    # Parse the returned data
+    rec_tpkt_header = {}
+    rec_x224_header = {}
+    rec_nego_resp = {}
+
+    # Older Windows hosts will return with a short answer
+    if len(rec) == 11:
+        rec_tpkt_header['version'],         \
+            rec_tpkt_header['reserved'],    \
+            rec_tpkt_header['length'],      \
+            rec_x224_header['length'],      \
+            rec_x224_header['code'],        \
+            rec_x224_header['dst_ref'],     \
+            rec_x224_header['src_ref'],     \
+            rec_x224_header['class'],       \
+            = struct.unpack('!BBHBBHHB', rec)
+    else:
+        # Newer Windows hosts will return with a longer answer
+        rec_tpkt_header['version'],         \
+            rec_tpkt_header['reserved'],    \
+            rec_tpkt_header['length'],      \
+            rec_x224_header['length'],      \
+            rec_x224_header['code'],        \
+            rec_x224_header['dst_ref'],     \
+            rec_x224_header['src_ref'],     \
+            rec_x224_header['class'],       \
+            rec_nego_resp['type'],          \
+            rec_nego_resp['flags'],         \
+            rec_nego_resp['length'],        \
+            rec_nego_resp['selected_proto'] \
+            = struct.unpack('!BBHBBHHBBBHI', rec)
+
+    if rec_tpkt_header['version'] != 3:
+        ret['state'] = 'CRITICAL'
+        ret['output'] = 'Unexpected version-value in TPKT response'
+        return
+
+    # 13 = binary 00001101; corresponding to 11010000 shifted four times
+    # dst_ref=0 and class=0 was asked for in the connection setup
+    if (rec_x224_header['code'] >> 4) != 13 or \
+            rec_x224_header['dst_ref'] != 0 or \
+            rec_x224_header['class'] != 0:
+        ret['state'] = 'CRITICAL'
+        ret['output'] = 'Unexpected element(s) in X.224 response'
+        return
+
+    ret['output'] = 'Connection successful'
+
+
+doCheck(check)

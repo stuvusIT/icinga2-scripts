@@ -25,7 +25,7 @@
 # Multiple perfdata values are space-separated.
 # warn, crit, min or max may be null. Trailing unfilled semicolons can be dropped
 #
-# label:value[UOM];[warn];[crit];[min];[max]
+# label=value[UOM];[warn];[crit];[min];[max]
 #
 # label: Label of this perfdata. Use single quotes to use spaces. Use two single quotes to specify a single quote in the string
 # uom:   Unit of measure (optional; one of s (seconds), % (percentage), B (bytes; also KB, MB, TB), c (continous counter)
