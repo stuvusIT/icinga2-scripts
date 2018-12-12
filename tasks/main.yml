@@ -26,6 +26,7 @@
     owner: root
     group: root
   with_items:
+    - common.py
     - common.sh
 
 - name: Copy check scripts
@@ -36,9 +37,10 @@
     owner: root
     group: root
   with_items:
-    - jenkins
     - free
+    - jenkins
     - kernel
+    - rdp
     - services
     - tty
     - unifi
