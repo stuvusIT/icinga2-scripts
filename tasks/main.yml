@@ -45,6 +45,7 @@
     - tty
     - unifi
     - zpool_scrub
+    - zfs
 
 - name: Copy notification scripts
   copy:
