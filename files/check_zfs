@@ -1,31 +1,12 @@
 #!/usr/bin/env python3
 
-########################################################################
-##
-## Author: Michel Weitbrecht (michel.weitbrecht@stuvus.uni-stuttgart.de)
-## Adapted from https://github.com/zlacelle/nagios_check_zfs_linux
-## Licensed under GPL (see below)
-##
-## This program is free software: you can redistribute it and/or modify
-## it under the terms of the GNU General Public License as published by
-## the Free Software Foundation, either version 3 of the License, or
-## (at your option) any later version.
-##
-## This program is distributed in the hope that it will be useful,
-## but WITHOUT ANY WARRANTY; without even the implied warranty of
-## MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-## GNU General Public License for more details.
-##
-## You should have received a copy of the GNU General Public License
-## along with this program.  If not, see <http://www.gnu.org/licenses/>.
-##
-########################################################################
+# Author: Michel Weitbrecht (michel.weitbrecht@stuvus.uni-stuttgart.de)
+# Adapted from https://github.com/zlacelle/nagios_check_zfs_linux
 
 import subprocess
 import argparse
 from common import doCheck
 
-ZPOOL_COMMAND = '/sbin/zpool'
 POSSIBLE_STATES = ('OK', 'WARNING', 'CRITICAL', 'UNKNOWN')
 
 
@@ -83,7 +64,7 @@ def check(ret):
             return
 
     # List pools
-    zpoolListCommand = [ZPOOL_COMMAND, 'list']
+    zpoolListCommand = ['zpool', 'list']
     if args['pool'] is not None:
         zpoolListCommand.append(args['pool'])
     childProcess = subprocess.Popen(zpoolListCommand, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
@@ -108,9 +89,9 @@ def check(ret):
     fragPercent = int(zpoolState['FRAG'].replace("%", ""))
 
     # Calculate performance data
-    ret['perfdata'] += 'capacity={}%;{};{},0,100 '.format(capPercent, args['capacity_warn'],
+    ret['perfdata'] += 'capacity={}%;{};{};0;100 '.format(capPercent, args['capacity_warn'],
                                                           args['capacity_crit'])
-    ret['perfdata'] += 'fragmentation={}%;{};{},0,100 '.format(fragPercent, args['fragmentation_warn'],
+    ret['perfdata'] += 'fragmentation={}%;{};{};0;100 '.format(fragPercent, args['fragmentation_warn'],
                                                                args['fragmentation_crit'])
     allocGB = convertToGB(zpoolState['ALLOC'])
     sizeGB = convertToGB(zpoolState['SIZE'])
@@ -132,9 +113,8 @@ def check(ret):
     elif capPercent >= args['capacity_warn'] or fragPercent >= args['fragmentation_warn']:
         raiseState('WARNING', ret)
 
-    ret['output'] = 'Pool {} is {}. Capacity is at {}%. Fragmentation is at {}%.'.format(zpoolState['NAME'],
-                                                                                         zpoolState['HEALTH'],
-                                                                                         capPercent, fragPercent)
+    ret['output'] = 'Pool {} is {}.'.format(zpoolState['NAME'], zpoolState['HEALTH'])
+    ret['details'] = 'Capacity is at {}%. Fragmentation is at {}%.'.format(capPercent, fragPercent)
 
 
 doCheck(check)
