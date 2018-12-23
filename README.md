@@ -11,6 +11,8 @@ Currently, the following scripts are installed:
 - `check_services` - Checks if any systemd services failed (systemctl --failed).
 - `check_tty` - Checks if a TTY is idling for a long time.
 - `check_unifi` - Checks if all APs in a Unifi controller are reachable and up to date.
+- `check_zfs` - Checks the health, free space and fragmentation of a ZFS pool.
+- `check_zpool_scrub` - Checks if a scrub has been performed recently on ZFS pools.
 - `notify_host_mattermost` - Notifies a host state in a Mattermost channel.
 - `notify_host_msmtp` - Notifies a host state via msmtp mail.
 - `notify_service_mattermost` - Notifies a service state in a Mattermost channel.

@@ -1,0 +1,120 @@
+#!/usr/bin/env python3
+
+# Author: Michel Weitbrecht (michel.weitbrecht@stuvus.uni-stuttgart.de)
+# Adapted from https://github.com/zlacelle/nagios_check_zfs_linux
+
+import subprocess
+import argparse
+from common import doCheck
+
+POSSIBLE_STATES = ('OK', 'WARNING', 'CRITICAL', 'UNKNOWN')
+
+
+def convertToGB(valueStr):
+    value = valueStr[:-1].replace(',', '.')
+    gigs = 0.0
+    if valueStr.endswith('G'):
+        gigs = float(value)
+    elif valueStr.endswith('T'):
+        gigs = float(value) * 1024
+    elif valueStr.endswith('P'):
+        gigs = float(value) * 1024 * 1024
+    elif valueStr.endswith('M'):
+        gigs = float(value) / 1024.0
+    elif valueStr.endswith('K'):
+        gigs = float(value) / (1024.0 * 1024.0)
+    return float(gigs)
+
+
+def raiseState(newState, ret):
+    if newState not in POSSIBLE_STATES:
+        ret['state'] = 'UNKNOWN'
+    elif POSSIBLE_STATES.index(newState) > POSSIBLE_STATES.index(ret['state']):
+        ret['state'] = newState
+
+
+def check(ret):
+    ret['name'] = 'zfs'
+
+    parser = argparse.ArgumentParser(
+        prog='check_zfs',
+        description='Check the ZFS pool specified by an argument.')
+    parser.add_argument('-cw', '--capacity-warn',
+                        help="Return WARNING if utilization of zpool reaches this value (%%, int [0-100])", type=int,
+                        default=60)
+    parser.add_argument('-cc', '--capacity-crit',
+                        help="Return CRITICAL if utilization of zpool reaches this value (%%, int [0-100])", type=int,
+                        default=80)
+    parser.add_argument('-fw', '--fragmentation-warn',
+                        help="Return WARNING if fragmentation of zpool reaches this value (%%, int [0-100])", type=int,
+                        default=60)
+    parser.add_argument('-fc', '--fragmentation-crit',
+                        help="Return CRITICAL if fragmentation of zpool reaches this value (%%, int [0-100])", type=int,
+                        default=80)
+    parser.add_argument('-p', '--pool',
+                        help="Name of the ZFS pool to check. If omitted, the first pool in `zpool list` is checked.",
+                        type=str)
+
+    args = vars(parser.parse_args())
+    # Check if thresholds are in range
+    for arg_key in ["capacity_warn", "capacity_crit", "fragmentation_warn", "fragmentation_crit"]:
+        if args[arg_key] < 0 or args[arg_key] > 100:
+            raiseState('UNKNOWN', ret)
+            ret['output'] = "Value {} for key {} is not in range [0, 100].".format(args[arg_key], arg_key)
+            return
+
+    # List pools
+    zpoolListCommand = ['zpool', 'list']
+    if args['pool'] is not None:
+        zpoolListCommand.append(args['pool'])
+    childProcess = subprocess.Popen(zpoolListCommand, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                    stderr=subprocess.PIPE)
+    zpoolListOutput = childProcess.communicate()[0]
+
+    if childProcess.returncode is not 0:
+        raiseState('UNKNOWN', ret)
+        ret['output'] = '`{}` failed with return code {}.'.format(' '.join(zpoolListCommand), childProcess.returncode)
+        ret['details'] = zpoolListOutput
+        return
+
+    zpoolLines = zpoolListOutput.splitlines()
+    zpoolHeaders = zpoolLines[0].split()
+    zpoolValues = zpoolLines[1].split()
+
+    zpoolState = {}
+    for index, key in enumerate(zpoolHeaders):
+        zpoolState[key.decode('UTF-8')] = zpoolValues[index].decode('UTF-8')
+
+    capPercent = int(zpoolState['CAP'].replace("%", ""))
+    fragPercent = int(zpoolState['FRAG'].replace("%", ""))
+
+    # Calculate performance data
+    ret['perfdata'] += 'capacity={}%;{};{};0;100 '.format(capPercent, args['capacity_warn'],
+                                                          args['capacity_crit'])
+    ret['perfdata'] += 'fragmentation={}%;{};{};0;100 '.format(fragPercent, args['fragmentation_warn'],
+                                                               args['fragmentation_crit'])
+    allocGB = convertToGB(zpoolState['ALLOC'])
+    sizeGB = convertToGB(zpoolState['SIZE'])
+    capWarnGB = sizeGB * args['capacity_warn'] / 100
+    capCritGB = sizeGB * args['capacity_crit'] / 100
+    ret['perfdata'] += 'allocation={}GB;{};{};0;{} '.format(allocGB, capWarnGB, capCritGB, sizeGB)
+
+    ret['perfdata'] += 'deduplication={}'.format(zpoolState['DEDUP'])
+
+    # Check state
+    if zpoolState['HEALTH'] in ['OFFLINE', 'REMOVED', 'UNAVAIL']:
+        raiseState('WARNING', ret)
+    elif zpoolState['HEALTH'] in ['DEGRADED', 'FAULTED']:
+        raiseState('CRITICAL', ret)
+
+    # Check capacity and fragmentation
+    if capPercent >= args['capacity_crit'] or fragPercent >= args['fragmentation_crit']:
+        raiseState('CRITICAL', ret)
+    elif capPercent >= args['capacity_warn'] or fragPercent >= args['fragmentation_warn']:
+        raiseState('WARNING', ret)
+
+    ret['output'] = 'Pool {} is {}.'.format(zpoolState['NAME'], zpoolState['HEALTH'])
+    ret['details'] = 'Capacity is at {}%. Fragmentation is at {}%.'.format(capPercent, fragPercent)
+
+
+doCheck(check)

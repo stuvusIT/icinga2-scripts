@@ -1,0 +1,464 @@
+#!/usr/bin/env bash
+
+# Author: Michel Weitbrecht (michel.weitbrecht@stuvus.uni-stuttgart.de)
+# Original source: https://github.com/Josef-Friedrich/check_zpool_scrub/blob/master/check_zpool_scrub
+
+########################################################################
+# Date functions
+########################################################################
+
+##
+# Convert a UNIX timestamp to a datetime string.
+#
+# Parameters:
+#   UNIX timestamp
+#
+# Return:
+#   %Y-%m-%d.%H:%M:%S
+##
+timestamp_to_datetime() {
+	date --date @"$1" +%Y-%m-%d.%H:%M:%S
+}
+
+
+##
+# Convert a datetime in the ctime format to a Unix timestamp.
+# ctime is a textual representation of a datetime derived from the
+# c function ctime (https://en.cppreference.com/w/c/chrono/ctime).
+# The ctime string has the following format:  Www Mmm dd hh:mm:ss yyyy,
+# where Www is the weekday, Mmm the month in letters, dd the day of the
+# month, hh:mm:ss the time, and yyyy the year.
+#
+# see https://www.freebsd.org/cgi/man.cgi?query=strftime&sektion=3
+#  %c is replaced by national representation of time and date.
+#
+# Parameters:
+#   $1: Www Mmm dd hh:mm:ss yyyy
+#
+# Return:
+#   UNIX timestamp
+##
+ctime_to_timestamp() {
+	date --date "$1" +%s
+}
+
+########################################################################
+# Global variables
+########################################################################
+
+. "$(dirname "${0}")/common.sh"
+
+checkName=zpool-scrub
+checkOutput=""
+
+USAGE="Usage: $0 <options>
+
+Options:
+ -c, --critical=OPT_CRITICAL
+    Interval in seconds for critical state.
+ -w, --warning=OPT_WARNING
+    Interval in seconds for warning state. Must be lower than -c.
+ -p,--pool=OPT_POOL
+    Name of the pool. If this option is omitted all pools are checked.
+ -h, --help
+    Show this help.
+
+Performance data:
+
+POOL is the name of the pool
+
+ - POOL_last_ago
+    Time interval in seconds for last scrub.
+ - POOL_progress
+    Percent 0 - 100
+ - POOL_speed
+    MB per second.
+ - POOL_time
+    Time to go in minutes.
+
+Details about the implementation of this monitoring plugin:
+
+This monitoring plugin grabs the last scrub date from the command
+'zpool status POOL'.
+"
+
+# Options from the command line interface
+OPT_POOL=
+# 1 month 60*60*24*31
+OPT_WARNING=2678400
+# 2 month 60*60*24*31*2
+OPT_CRITICAL=5356800
+
+parse_parameters() {
+	local OPT
+	while getopts ':c:hp:svw:-:' OPT ; do
+		case $OPT in
+			c) OPT_CRITICAL=$OPTARG ;;
+			h) echo "$USAGE" ; exit 0 ;;
+			p) OPT_POOL="$OPTARG" ;;
+			w) OPT_WARNING=$OPTARG ;;
+
+			\?)
+				echo "Invalid option “-$OPTARG”!" >&2
+				exit 2
+				;;
+
+			:)
+				echo "Option “-$OPTARG” requires an argument!" >&2
+				exit 3
+				;;
+
+			-)
+				LONG_OPTARG="${OPTARG#*=}"
+
+				case $OPTARG in
+
+					critical=?*)
+						OPT_CRITICAL=$LONG_OPTARG
+						;;
+
+					help)
+						echo "$USAGE"
+						exit 0
+						;;
+
+					pool=?*)
+						OPT_POOL="$LONG_OPTARG"
+						;;
+
+					warning=?*)
+						OPT_WARNING=$LONG_OPTARG
+						;;
+
+					help*)
+						echo "No argument allowed for the option “--$OPTARG”!" >&2
+						exit 4
+						;;
+
+					critical*|pool*|warning*)
+						echo "Option “--$OPTARG” requires an argument!" >&2
+						exit 3
+						;;
+
+					'')	# "--" terminates argument processing
+						break
+						;;
+
+					*)
+						echo "Invalid option “--$OPTARG”!" >&2
+						exit 2
+						;;
+
+				esac
+				;;
+
+		esac
+	done
+}
+
+########################################################################
+# Detect the date of the last scrub.
+#
+# Grab the date string of the last scrub from "zpool status". If the
+# last scrub was canceled then grab the last scrub date from "zpool
+# history". On old pool with a lot of history grabing only from "zpool
+# history" is very slow.
+########################################################################
+
+# Functions:
+
+# last_scrub_grab_ctime_from_string
+# last_scrub_grab_ctime_from_command
+# last_scrub_to_timestamp
+# _get_last_scrub_timestamp
+
+##
+# /* If there's never been a scan, there's not much to say. */
+#   "none requested\n"
+#     -> scan: none requested
+#
+# /* Scan is finished or canceled. */
+#   "scrub repaired %s in %lluh%um with %llu errors on %s"
+#      -> scan: scrub repaired 0 in 0h0m with 0 errors on Mon Aug  6 16:30:52 2018
+#
+#   "resilvered %s in %lluh%um with %llu errors on %s"
+#
+#   "scrub canceled on %s"
+#
+#   "resilver canceled on %s"
+#
+# /* Scan is in progress. */
+#
+#   "scrub in progress since %s"
+#
+#   "resilver in progress since %s"
+#
+# Parameters:
+#   $1: The output of "zpool status POOL"
+#
+# Return:
+#   A datetime formated in ctime format.
+##
+last_scrub_grab_ctime_from_string() {
+	# Www Mmm dd hh:mm:ss yyyy,
+	local REGEX
+	REGEX="\
+s/\
+^.*\
+(canceled on|in progress since|errors on)\
+ \
+(.*)$\
+/\2/p"
+	echo "$1" | \
+		grep '  scan: ' | \
+		sed -n -E "$REGEX"
+}
+
+##
+# Parameters:
+#   $1: The name of the pool.
+##
+last_scrub_grab_ctime_from_command() {
+	last_scrub_grab_ctime_from_string "$(zpool status "$1")"
+}
+
+##
+# Parameters:
+#   $1: The name of the pool.
+##
+last_scrub_to_timestamp() {
+	local CTIME
+	CTIME="$(last_scrub_grab_ctime_from_command "$1")"
+	if [ -n "$CTIME" ]; then
+		ctime_to_timestamp "$CTIME"
+	fi
+}
+
+##
+# Assemble the performace data of one pool
+# $1: POOL
+# $2: DIFF
+# $3: PROGRESS
+# $4: SPEED
+# $5: TIME
+##
+performance_data_one_pool() {
+	local POOL="$1_"
+	echo "\
+${POOL}last_ago=$2s;$OPT_WARNING;$OPT_CRITICAL;0;$OPT_WARNING \
+${POOL}progress=$3%;100;100;0;100 \
+${POOL}speed=$4MB/s;1000;1200;0;500 \
+${POOL}time=$5m;2880;4320"
+}
+
+########################################################################
+# progress
+########################################################################
+
+##
+# Grab the scrub progress from zpool status
+#
+# Parameters:
+#   $1: The name of the pool
+#
+# Return:
+#   A progress string (85,3%)
+##
+progress_grep() {
+	local REGEX
+	REGEX="s/^.*, ([[:digit:]]{1,3}.[[:digit:]]{1,2}%) done$/\1/p"
+	zpool status "$1" | grep ' done' | sed -n -E "${REGEX}" || true
+}
+
+progress_normalize() {
+	echo $1 | \
+		sed 's/%//' | \
+		tr ',' '.'
+}
+
+progress() {
+	local GREP
+	GREP="$(progress_grep "$1")"
+	if [ -n "$GREP" ]; then
+		progress_normalize "$GREP"
+	else
+		echo 100
+	fi
+}
+
+########################################################################
+# Speed
+########################################################################
+
+speed_grep() {
+	zpool status "$1" | grep -E -o '[[:digit:],]*[[:alpha:]]*/s' || true
+}
+
+speed_normalize() {
+	local SPEED UNIT
+	SPEED=$(echo "$1" | sed 's#/s##' | tr , .)
+	UNIT=$(echo -n "$SPEED" | tail -c  1)
+	SPEED=$(echo "$SPEED" | sed 's/.$//' )
+
+	if [ "$UNIT" = K ]; then
+		SPEED="$(echo "$SPEED" | \
+			 awk '{MB = $1 / 1024 ; print MB}')"
+	fi
+	echo "$SPEED"
+}
+
+speed() {
+	local SPEED
+	SPEED="$(speed_grep "$1")"
+	if [ -n "$SPEED" ]; then
+		speed_normalize "$SPEED"
+	else
+		echo 0
+	fi
+}
+
+########################################################################
+# Time to go
+########################################################################
+
+##
+# Extract the time to go from the zpool status output.
+#
+# Parameters:
+# $1: POOL: Name of the pool
+#
+# Responsible for the output is this line:
+#   (void) printf(gettext(", %lluh%um to go\n"),
+# in the ZFS source code.
+# https://github.com/openzfs/openzfs/blob/ed81aacb0d0fcbf7e0c0745ea4556655050c26bf/usr/src/cmd/zpool/zpool_main.c#L4441
+#
+# For example:
+# Input:
+#   ...
+#   scan: scrub in progress since Sun Aug 13 00:24:02 2017
+#     7,34T scanned out of 10,1T at 57,4M/s, 14h12m to go
+#     0 repaired, 72,38% done
+#   ...
+# Output:
+#     14h12m
+#
+# Other solutions:
+#
+# Not working on FreeBSD:
+#   grep -P -o '(?<=, )[[:digit:]]*h[[:digit:]]*m(?= to go)'
+#
+# Naive solution:
+#   grep ' to go' |
+#   awk '{ print $8 }'
+##
+time_grep() {
+	zpool status "$1" | grep ' to go' | sed -E 's/^.*, (.*h.*m) to go.*$/\1/g' || true
+}
+
+time_to_min() {
+	local HOURS MIN
+	HOURS=$(echo "$1" | sed 's/h.*//')
+	MIN=$(echo "$1" | sed 's/.*h//' | sed 's/m//')
+	echo $((HOURS * 60 + MIN))
+}
+
+_time() {
+	local GREP
+	GREP="$(time_grep "$1")"
+	if [ -n "$GREP" ]; then
+		time_to_min "$GREP"
+	else
+		echo 0
+	fi
+}
+
+########################################################################
+# Main functions
+########################################################################
+
+##
+# Check one ZFS pool.
+#
+# Parameters:
+#   $1: The name of the pool
+##
+check_one_pool() {
+	local POOL="$1" NOW LAST_SCRUB DIFF PROGRESS SPEED TIME
+
+	if ! zpool status "$POOL" > /dev/null 2>&1; then
+		checkOutput="'${POOL}' is no ZFS pool."
+		checkState=UNKNOWN
+		return
+	fi
+
+	NOW="$(date +%s)"
+	LAST_SCRUB=$(last_scrub_to_timestamp "$POOL")
+
+	if [ -z "$LAST_SCRUB" ]; then
+		checkOutput="The pool has never had a scrub."
+		checkState=UNKNOWN
+		return
+	fi
+
+	DIFF=$((NOW - LAST_SCRUB))
+	PROGRESS=$(progress "$POOL")
+	SPEED="$(speed "$POOL")"
+	TIME="$(_time "$POOL")"
+
+	checkState=UNKNOWN
+
+	if [ "$DIFF" -gt "$OPT_CRITICAL" ]; then
+		checkState=CRITICAL
+	elif [ "$DIFF" -gt "$OPT_WARNING" ]; then
+		checkState=WARNING
+	else
+		checkState=OK
+	fi
+
+	checkPerfdata="$checkPerfdata \
+$(performance_data_one_pool \
+		"${POOL}" "${DIFF}" "${PROGRESS}" "${SPEED}" "${TIME}")"
+	checkOutput="${checkOutput}The last scrub on zpool '${POOL}' was \
+performed on $(timestamp_to_datetime $LAST_SCRUB)."
+
+}
+
+check_multiple_pools() {
+	local POOL GLOBAL_STATE=OK
+
+	for POOL in $@; do
+		check_one_pool "$POOL"
+		# If one pool is critical the global state turns to
+		# critical.
+		if [ "${checkState}" = "CRITICAL" ]; then
+			GLOBAL_STATE=CRITICAL
+		# warning
+		elif [ "${checkState}" = "WARNING" ] && \
+		     ! [ ${GLOBAL_STATE} = "CRITICAL" ]; then
+			GLOBAL_STATE=WARNING
+		# unknown
+		elif [ "${checkState}" = "UNKNOWN" ] && \
+		     ! [ ${GLOBAL_STATE} = "WARNING" ] && \
+		     ! [ ${GLOBAL_STATE} = "CRITICAL" ]; then
+			GLOBAL_STATE=UNKNOWN
+		fi
+	done
+	checkState="$GLOBAL_STATE"
+}
+
+parse_parameters $@
+
+if [ "$OPT_WARNING" -gt "$OPT_CRITICAL" ]; then
+	echo '<warntime> must be smaller than <crittime>.' >&2
+	echo "$USAGE" >&2
+	checkState=UNKNOWN
+	checkReturn
+fi
+
+if [ -n "$OPT_POOL" ]; then
+	check_one_pool "$OPT_POOL"
+else
+	check_multiple_pools "$(zpool list -H -o name)"
+fi
+
+checkReturn
