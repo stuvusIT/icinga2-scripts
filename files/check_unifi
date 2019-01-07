@@ -113,7 +113,7 @@ if [ -n "${unreachable}" ]; then
 fi
 nUpgradable="$(echo "${upgradable}" | sed '/^\s*$/d' | wc -l)"
 if [ -n "${upgradable}" ]; then
-	if [ "${nUnreachable}" = 1 ]; then
+	if [ "${nUpgradable}" = 1 ]; then
 		checkOutput="${nUpgradable} device is upgradable"
 	else
 		checkOutput="${nUpgradable} devices are upgradable"
