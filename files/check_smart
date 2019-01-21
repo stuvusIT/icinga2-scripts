@@ -1,0 +1,115 @@
+#!/usr/bin/env python3
+
+# Author: Michel Weitbrecht (michel.weitbrecht@stuvus.uni-stuttgart.de)
+# Adapted from https://github.com/zlacelle/nagios_check_zfs_linux
+
+import argparse
+import subprocess
+from sys import stderr
+import re
+
+from common import doCheck
+
+POSSIBLE_STATES = ('OK', 'WARNING', 'CRITICAL', 'UNKNOWN')
+BITS = (
+    ('smartctl error', 'UNKNOWN'),
+    ('Device open failed', 'CRITICAL'),
+    ('SMART or ATA command failed', 'WARNING'),
+    ('Disk failing', 'WARNING'),
+    ('Prefail attributes over threshold', 'WARNING'),
+    ('Attributes over threshold in the past', 'WARNING'),
+    ('Error log contains SMART errors', 'WARNING'),
+    ('Self-test lof contains errors', 'WARNING'),
+)
+
+
+def raiseState(newState, ret):
+    if newState not in POSSIBLE_STATES:
+        ret['state'] = 'UNKNOWN'
+    elif POSSIBLE_STATES.index(newState) > POSSIBLE_STATES.index(ret['state']):
+        ret['state'] = newState
+
+
+def check_smart(device):
+    args = ['smartctl', '--all', '-q', 'silent'] + device.split()
+    return subprocess.run(['smartctl', '--all', '/dev/sda'], stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                          encoding="UTF-8", timeout=30)
+
+
+def extract_smart_attributes(stdout):
+    started_table = False
+    attributes = {}
+    for line in stdout.split('\n'):
+        print(stdout.split('\n'))
+        if started_table:
+            columns = re.split(r'\s+', line)
+            print(columns[1])
+            attributes[columns[1]] = {'id': columns[1], 'name': columns[2], 'flag': columns[3],
+                                      'value': int(columns[4]), 'worst': int(columns[5]), 'thresh': int(columns[6]),
+                                      'type': columns[7], 'updated': columns[8], 'when_failed': columns[9],
+                                      'raw_value': columns[10]}
+        if line == "ID# ATTRIBUTE_NAME          FLAG     VALUE WORST THRESH TYPE      UPDATED  WHEN_FAILED RAW_VALUE":
+            started_table = True
+    print(attributes)
+
+def check(ret):
+    ret['name'] = 'smart'
+
+    parser = argparse.ArgumentParser(
+        prog='check_smart',
+        description='Check the ZFS pool specified by an argument.')
+    parser.add_argument('-cw', '--capacity-warn',
+                        help="Return WARNING if utilization of zpool reaches this value (%%, int [0-100])", type=int,
+                        default=60)
+    parser.add_argument('-cc', '--capacity-crit',
+                        help="Return CRITICAL if utilization of zpool reaches this value (%%, int [0-100])", type=int,
+                        default=80)
+    parser.add_argument('-fw', '--fragmentation-warn',
+                        help="Return WARNING if fragmentation of zpool reaches this value (%%, int [0-100])", type=int,
+                        default=60)
+    parser.add_argument('-fc', '--fragmentation-crit',
+                        help="Return CRITICAL if fragmentation of zpool reaches this value (%%, int [0-100])", type=int,
+                        default=80)
+    parser.add_argument('-p', '--pool',
+                        help="Name of the ZFS pool to check. If omitted, the first pool in `zpool list` is checked.",
+                        type=str)
+
+    parser.add_argument('--device', '-x', action='append',
+                        default=[],
+                        help='Add a device to monitor')
+    parser.add_argument('--ignore-past-errors', '-i', action='store_true', help='Add a device to monitor')
+
+    args = vars(parser.parse_args())
+
+    if not args['device']:
+        raiseState('UNKNOWN', ret)
+        ret['output'] = 'No devices specified.'
+        return
+
+    if args['ignore_past_errors']:
+        BITS[5][1] = 'OK'
+
+    any_smartctl_messages = set()
+    for device in args['device']:
+        code = check_smart(device)
+        extract_smart_attributes(code.stdout)
+        smartctl_messages = set()
+        for i in range(8):
+            if (int(code.returncode) & (1 << i)):
+                message, state = BITS[i]
+                smartctl_messages.add(message)
+                any_smartctl_messages.add(message)
+                raiseState(state, ret)
+        if smartctl_messages:
+            if '-d' in device:
+                device = device.split()[1]
+            ret['details'] += '{}: {}\n'.format(device, '. '.join(smartctl_messages))
+    if any_smartctl_messages:
+        ret['output'] = '{} ({})'.format(', '.join(any_smartctl_messages), bin(int(code)))
+    else:
+        ret['output'] = 'Devices {} are okay.'.format(','.join(args['device']))
+
+    # ret['perfdata'] += 'deduplication={}'
+
+
+doCheck(check)

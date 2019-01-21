@@ -42,6 +42,7 @@
     - kernel
     - rdp
     - services
+    - smart
     - tty
     - unifi
     - zfs
