@@ -42,6 +42,7 @@
 # max:   Maxmimum value of this perfdata
 
 import sys
+import traceback
 
 defaultCheckReturn = {
     'state': 'OK',
@@ -60,7 +61,9 @@ def doCheck(checkFunc):
     except Exception as e:
         ret['state'] = 'UNKNOWN'
         ret['output'] = 'Python exception occured'
-        ret['details'] = e
+        ret['perfdata'] = ''
+        ret['details'] = ''.join(traceback.format_exception(etype=type(e),
+                                 value=e, tb=e.__traceback__))
 
     # Require name
     if 'name' not in ret:
