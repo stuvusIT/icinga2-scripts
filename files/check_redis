@@ -1,0 +1,85 @@
+#!/usr/bin/env python3
+
+import socket
+import time
+import argparse
+from common import doCheck
+
+
+def check(ret):
+    ret['name'] = 'redis'
+
+    parser = argparse.ArgumentParser(description='Check a Redis instance')
+    parser.add_argument('-H', '--host', dest='host', default='127.0.0.1',
+                        help='Hostname to connect to')
+    parser.add_argument('-p', '--port', dest='port', default=6379, type=int,
+                        help='Port to connect to')
+    parser.add_argument('-w', '--warning', dest='warn', type=int, default=5,
+                        help='Seconds until check is warning')
+    parser.add_argument('-c', '--critical', dest='crit', type=int, default=10,
+                        help='Seconds until check is critical')
+    parser.add_argument('-t', '--timeout', dest='timeout', type=int,
+                        default=15, help='Seconds until the check times out')
+
+    options = parser.parse_args()
+
+    to_send = 'info\n quit'
+
+    socket.setdefaulttimeout(options.timeout)
+    s = socket.socket()
+    try:
+        t1 = time.time()
+
+        # Establish connection
+        s.connect((options.host, options.port))
+        # Send request
+        sent_bytes = s.send(to_send.encode())
+        if sent_bytes != len(to_send):
+            ret['state'] = 'CRITICAL'
+            ret['output'] = 'Could not send payload'
+            return
+        # Read back response
+        buf = ''
+        while '\r\n\r\n' not in buf:
+            buf += s.recv(1024).decode()
+
+        # Record elapsed time
+        elapsed = time.time() - t1
+    except socket.error as e:
+        ret['state'] = 'CRITICAL'
+        ret['output'] = 'Could not set up connection'
+        ret['details'] = e
+        return
+    except Exception as e:
+        ret['state'] = 'CRITICAL'
+        ret['output'] = 'Problem communicating with Redis server'
+        ret['details'] = e
+        return
+    finally:
+        s.close()
+
+    # Format data
+    data = dict(x.split(':', 1) for x in buf.split('\r\n') if ':' in x)
+    ret['output'] = 'Connection to Redis successful'
+
+    # Format perfdata
+    ret['perfdata'] = 'time={:.4f}s;{};{};{};{}'.format(elapsed,
+                                                        options.warn,
+                                                        options.crit, 0,
+                                                        options.timeout)
+    ret['perfdata'] += ' connectedClients={}'.format(data['connected_clients'])
+    ret['perfdata'] += ' blockedClients={}'.format(data['blocked_clients'])
+    ret['perfdata'] += ' usedMemory={}B'.format(data['used_memory'])
+
+    # Check elapsed time
+    if elapsed > options.crit:
+        ret['state'] = 'CRITICAL'
+        ret['output'] = 'Redis connection setup time was too long'
+        return
+    if elapsed > options.warn:
+        ret['state'] = 'WARNING'
+        ret['output'] = 'Redis connection setup time was too long'
+        return
+
+
+doCheck(check)

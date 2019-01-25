@@ -41,6 +41,7 @@
     - jenkins
     - kernel
     - rdp
+    - redis
     - services
     - tty
     - unifi
