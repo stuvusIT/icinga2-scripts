@@ -38,6 +38,7 @@
     group: root
   with_items:
     - free
+    - hddtemp
     - jenkins
     - kernel
     - rdp
