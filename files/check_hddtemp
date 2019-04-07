@@ -1,5 +1,22 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
+
+# usage: check_hddtemp [-h] [-tw TEMP_WARN] [-tc TEMP_CRIT]
+#                      [--temp-max TEMP_MAX] [-i IGNORE]
+#
+# Check the temperature of all SCSI-like devices.
+#
+# optional arguments:
+#   -h, --help            show this help message and exit
+#   -tw TEMP_WARN, --temp-warn TEMP_WARN
+#                         Return WARNING if the temperature in degree Celcius of
+#                         any device is higher than this
+#   -tc TEMP_CRIT, --temp-crit TEMP_CRIT
+#                         Return CRITICAL if the temperature in degree Celcius
+#                         of any device is higher than this
+#   --temp-max TEMP_MAX   Use this value as maximum for performance data
+#   -i IGNORE, --ignore IGNORE
+#                         Ignore this device, e.g. 'sda'. May be provided
+#                         multiple times.
 
 # Author: Michel Weitbrecht (michel.weitbrecht@stuvus.uni-stuttgart.de)
 
@@ -9,14 +26,6 @@ import argparse
 import json
 from common import doCheck
 
-POSSIBLE_STATES = ('OK', 'WARNING', 'CRITICAL', 'UNKNOWN')
-
-def raiseState(newState, ret):
-    if newState not in POSSIBLE_STATES:
-        ret['state'] = 'UNKNOWN'
-    elif POSSIBLE_STATES.index(newState) > POSSIBLE_STATES.index(ret['state']):
-        ret['state'] = newState
-
 
 def check(ret):
     ret['name'] = 'hddtemp'
@@ -25,20 +34,28 @@ def check(ret):
         prog='check_hddtemp',
         description='Check the temperature of all SCSI-like devices.')
     parser.add_argument('-tw', '--temp-warn',
-                        help="Return WARNING if the temperature in degree Celcius of any device is higher than this", type=int,
+                        help="Return WARNING if the temperature in degree Celcius of any device is higher than this",
+                        type=int,
                         default=40)
     parser.add_argument('-tc', '--temp-crit',
-                        help="Return CRITICAL if the temperature in degree Celcius of any device is higher than this", type=int,
+                        help="Return CRITICAL if the temperature in degree Celcius of any device is higher than this",
+                        type=int,
                         default=50)
+    parser.add_argument('--temp-max',
+                        help="Use this value as maximum for performance data",
+                        type=int,
+                        default=65)
     parser.add_argument('-i', '--ignore',
-                        help="Ignore this device, e.g. 'sda'. May be provided multiple times.", default=[], action='append')
+                        help="Ignore this device, e.g. 'sda'. May be provided multiple times.", default=[],
+                        action='append')
     args = vars(parser.parse_args())
 
-    lsblk_process = subprocess.Popen(['lsblk', '-SJ', '--output=NAME,MODEL'], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    lsblk_process = subprocess.Popen(['lsblk', '-SJ', '--output=NAME,MODEL'], stdin=subprocess.PIPE,
+                                     stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     lsblk_json_output = lsblk_process.communicate()[0].decode('ISO-8859-1')
 
     if lsblk_process.returncode is not 0:
-        raiseState('UNKNOWN', ret)
+        ret['state'] = 'UNKNOWN'
         ret['output'] = '`lsblk -SJ --output=NAME,MODEL` failed with return code {}.'.format(lsblk_process.returncode)
         ret['details'] = lsblk_json_output
         return
@@ -58,33 +75,41 @@ def check(ret):
             dev_path = '/dev/{}'.format(device['name'])
             # Check if access to device is allowed for the executing user
             if not os.access(dev_path, os.R_OK):
-                raiseState('UNKNOWN', ret)
+                ret['state'] = 'UNKNOWN'
                 ret['output'] = 'Not allowed to access {}'.format(dev_path)
                 return
             scan_devices.append(dev_path)
 
-    hddtemp_process = subprocess.Popen(hddtemp_command + scan_devices, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    hddtemp_process = subprocess.Popen(hddtemp_command + scan_devices, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                       stderr=subprocess.PIPE)
     hddtemp_output = hddtemp_process.communicate()[0].decode('ISO-8859-1')
 
-    min_temp = 65
-    max_temp = 0
-    for idx,line in enumerate(hddtemp_output.splitlines()):
+    temps = []
+    device_misses_sensor = False
+    for idx, line in enumerate(hddtemp_output.splitlines()):
         dev = scan_devices[idx].replace('/dev/', '')
         model = model_for_device[dev]
         if 'no sensor' in line:
-            raiseState('UNKNOWN', ret)
             ret['details'] += '{} ({}): no sensor\n'.format(dev, model)
+            device_misses_sensor = True
             continue
         temp = int(line)
-        if temp >= args['temp_crit']:
-            raiseState('CRITICAL', ret)
-        elif temp >= args['temp_warn']:
-            raiseState('WARNING', ret)
-        max_temp = max(max_temp, temp)
-        min_temp = min(min_temp, temp)
-        ret['perfdata'] += '{}={}°C;{};{};0;65 '.format(dev,temp,args['temp_warn'],args['temp_crit'])
+        temps.append(temp)
+        ret['perfdata'] += '{}={}°C;{};{};0;{} '.format(dev, temp, args['temp_warn'], args['temp_crit'],
+                                                        max(65, int(args['temp_crit'] * 1.1)))
         ret['details'] += '{} ({}): {}°C\n'.format(dev, model, temp)
 
-    ret['output'] = 'HDD temperature is in range [{}, {}].'.format(min_temp, max_temp)
+    min_temp = min(temps)
+    max_temp = max(temps)
+    ret['output'] = 'HDD temperatures are in range [{}, {}].'.format(min_temp, max_temp)
+
+    if device_misses_sensor:
+        ret['output'] += ' Some device has no temperature sensor.'
+        ret['state'] = 'UNKNOWN'
+    if max_temp >= args['temp_crit']:
+        ret['state'] = 'CRITICAL'
+    elif max_temp >= args['temp_warn']:
+        ret['state'] = 'WARNING'
+
 
 doCheck(check)
