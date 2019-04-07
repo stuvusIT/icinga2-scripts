@@ -66,7 +66,7 @@ def check(ret):
     lsblk_devices = json.loads(lsblk_json_output)['blockdevices']
     model_for_device = {}
     for disk in lsblk_devices:
-        model_for_device[disk['name']] = disk['model']
+        model_for_device[disk['name']] = disk['model'].strip()
 
     hddtemp_command = ['hddtemp', '-n']
     scan_devices = []
@@ -85,27 +85,34 @@ def check(ret):
     hddtemp_output = hddtemp_process.communicate()[0].decode('ISO-8859-1')
 
     temps = []
-    device_misses_sensor = False
+    temperature_reading_failed = False
     for idx, line in enumerate(hddtemp_output.splitlines()):
         dev = scan_devices[idx].replace('/dev/', '')
         model = model_for_device[dev]
-        if 'no sensor' in line:
-            ret['details'] += '{} ({}): no sensor\n'.format(dev, model)
-            device_misses_sensor = True
+        try:
+            temp = int(line)
+        except ValueError:
+            device_error = line.split(':')[2].strip()
+            temperature_reading_failed = True
+            ret['details'] += '{} ({}): {}\n'.format(dev, model, device_error)
             continue
-        temp = int(line)
         temps.append(temp)
         ret['perfdata'] += '{}={}°C;{};{};0;{} '.format(dev, temp, args['temp_warn'], args['temp_crit'],
-                                                        max(65, int(args['temp_crit'] * 1.1)))
+                                                        args['temp_max'])
         ret['details'] += '{} ({}): {}°C\n'.format(dev, model, temp)
+
+    if temperature_reading_failed:
+        ret['output'] = 'Some device could not report its temperature.'
+        ret['state'] = 'UNKNOWN'
+        return
+
+    if not temps:
+        ret['output'] = 'No devices to check.'
+        return
 
     min_temp = min(temps)
     max_temp = max(temps)
     ret['output'] = 'HDD temperatures are in range [{}, {}].'.format(min_temp, max_temp)
-
-    if device_misses_sensor:
-        ret['output'] += ' Some device has no temperature sensor.'
-        ret['state'] = 'UNKNOWN'
     if max_temp >= args['temp_crit']:
         ret['state'] = 'CRITICAL'
     elif max_temp >= args['temp_warn']:
