@@ -1,0 +1,108 @@
+#!/usr/bin/env bash
+
+# Checks whether a one domain from a random list can be reached.
+# The domain is chosen randomly
+#
+# Parameters:
+# -H - The host to ask for the domain (defaults to 127.0.0.1)
+# -p - The port to ask on (defaults to 53)
+# -t - Timeout for dig in seconds (defaults to 2)
+
+# shellcheck source=common.sh
+. "$(dirname "${0}")/common.sh"
+checkName=dns-recursion
+checkState=OK
+checkOutput='Test domain resovled successfully'
+
+# Parameters
+digAt=127.0.0.1
+port=53
+timeout=2
+while getopts ":H:p:t:" opt; do
+	case "${opt}" in
+		H)
+			digAt="${OPTARG}"
+			;;
+		p)
+			port="${OPTARG}"
+			;;
+		t)
+			timeout="${OPTARG}"
+			;;
+		\?)
+			echo "Invalid option -${OPTARG}"
+			exit 3
+			;;
+		:)
+			echo "Option -${OPTARG} requires an argument"
+			exit 3
+			;;
+	esac
+done
+
+# The list - basically some of alexa top 50 + some own ideas
+checkNames=(
+	360.cn
+	aliexpress.com
+	alipay.com
+	amazon.com
+	apple.com
+	baidu.com
+	bing.com
+	blogspot.com
+	ebay.com
+	facebook.com
+	github.com
+	google.org
+	gq.com
+	gstatic.com
+	imdb.com
+	instagram.com
+	jd.com
+	kernel.org
+	linkedin.com
+	live.com
+	livejasmin.com
+	mail.ru
+	microsoft.com
+	netflix.com
+	nsa.gov
+	office.com
+	pornhub.com
+	reddit.com
+	sina.com.cn
+	sohu.com
+	stackoverflow.com
+	taobao.com
+	tmall.com
+	twitch.tv
+	twitter.com
+	vk.com
+	wechat.com
+	weibo.com
+	whatsapp.com
+	wikipedia.org
+	xvideos.com
+	yahoo.com
+	yandex.ru
+	youtube.com
+)
+
+# Get a random element
+RANDOM=$$$(date +%s)
+name=${checkNames[$RANDOM % ${#checkNames[@]}]}
+
+# Do the check
+set +e
+out="$(dig -p "${port}" "+timeout=${timeout}" +short "${name}" "@${digAt}")"
+ret="${?}"
+set -e
+
+# Handle result
+if [[ "${ret}" != 0 ]]; then
+	checkState=CRITICAL
+	checkOutput="dig returned ${ret}"
+	checkDetails="${out}"
+fi
+
+checkReturn

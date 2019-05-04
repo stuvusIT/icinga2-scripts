@@ -37,6 +37,8 @@
     owner: root
     group: root
   with_items:
+    - dns_recursion
+    - dns_repl
     - free
     - hddtemp
     - jenkins
