@@ -4,8 +4,10 @@ This role installs commonly used scripts for Icinga 2.
 
 Currently, the following scripts are installed:
 
+- `check_dns_recursion` - Checks whether random domain names are successfully recursed.
+- `check_dns_repl` - Checks whether DNS zones are successfully replicated.
 - `check_free` - Checks if the machine has enough available memory.
-- `check_hddtemp` - Checks the temperature of all attached SCSI-like devices
+- `check_hddtemp` - Checks the temperature of all attached SCSI-like devices.
 - `check_jenkins` - Checks a Jenkins instance via the [Metrics plugin](https://wiki.jenkins.io/display/JENKINS/Metrics+Plugin).
 - `check_kernel` - Checks if the machine needs to be rebooted in order to apply a kernel update.
 - `check_rdp` - Checks if an RDP connection works.

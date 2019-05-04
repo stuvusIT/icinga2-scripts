@@ -1,0 +1,172 @@
+#!/usr/bin/env python3
+
+# Checks whether a DNS zone has been properly replicated.
+#
+# optional arguments:
+#   -h, --help            show this help message and exit
+#   -l LIST_CMD, --list-cmd LIST_CMD
+#                         Shell list command for zones
+#   -H INITIAL_HOST, --initial-host INITIAL_HOST
+#                         Host to contact for the initial dig
+#   -p INITIAL_PORT, --initial-port INITIAL_PORT
+#                         Port to connect to for the initial dig
+#   -w WARN, --warn WARN  Number of out-of-sync or unreachable zones for a
+#                         warning status
+#   -c CRIT, --crit CRIT  Number of out-of-sync or unreachable zones for a
+#                         critical status
+#   -t TIMEOUT, --timeout TIMEOUT
+#                         Timeout for dig
+
+
+import argparse
+import subprocess
+from threading import Thread, Lock
+from common import doCheck
+
+
+nDesyncZones = 0
+nDesyncZonesLock = Lock()
+
+
+def dig(rrType, rrName, server, timeout, port=53):
+    cmd = ['dig', '-p', str(port), '+timeout=' + str(timeout), '+short',
+           rrType, rrName, '@' + server]
+    try:
+        out = subprocess.check_output(cmd, stderr=subprocess.DEVNULL) \
+              .decode('UTF-8').strip()
+    except subprocess.CalledProcessError:
+        return None
+
+    return out
+
+
+def handleMaster(zone, initialHost, initialPort, timeout, details):
+    global nDesyncZones, nDesyncZonesLock
+    # Fetch master
+    master = dig('SOA', zone, initialHost, timeout, port=initialPort)
+    if master is None:
+        details.append('Cannot get master of zone {}'.format(zone))
+        with nDesyncZonesLock:
+            nDesyncZones += 1
+        return
+    master = master.split(' ')[0]
+
+    # Ask master for serial
+    masterSerial = dig('SOA', zone, master, timeout)
+    if masterSerial is None:
+        details.append('Cannot get SOA of zone {}'.format(zone))
+        with nDesyncZonesLock:
+            nDesyncZones += 1
+        return
+    masterSerial = masterSerial.split(' ')[2]
+
+    # Ask master for NSes
+    nses = dig('NS', zone, master, timeout)
+    if nses is None:
+        details.append('Cannot get NS of zone {}'.format(zone))
+        with nDesyncZonesLock:
+            nDesyncZones += 1
+        return
+    nses = nses.split('\n')
+
+    # Check all NSes
+    synced = True
+    for ns in nses:
+        if ns == master:
+            continue
+
+        serial = dig('SOA', zone, ns, timeout)
+        if serial is None:
+            details.append('Cannot ask {} for serial of zone {}'
+                           .format(ns, zone))
+            synced = False
+            continue
+        serial = serial.split(' ')[2]
+
+        if serial != masterSerial:
+            details.append('NS {} of zone {} is desynced (master={}, slave={})'
+                           .format(ns, zone, masterSerial, serial))
+            synced = False
+
+    # Update desynced zones
+    if not synced:
+        with nDesyncZonesLock:
+            nDesyncZones += 1
+
+
+def check(ret):
+    global nDesyncZones, nDesyncZonesLock
+    ret['name'] = 'dns-repl'
+
+    parser = argparse.ArgumentParser(
+        prog='check_dns_repl',
+        description='Checks whether a DNS zone has been properly replicated.')
+    parser.add_argument('-l', '--list-cmd', type=str, required=True,
+                        help='Shell list command for zones')
+    parser.add_argument('-H', '--initial-host', type=str, default='127.0.0.1',
+                        help='Host to contact for the initial dig')
+    parser.add_argument('-p', '--initial-port', type=int, default=53,
+                        help='Port to connect to for the initial dig')
+    parser.add_argument('-w', '--warn', type=int, default=1,
+                        help='Number of out-of-sync or unreachable zones ' +
+                        'for a warning status')
+    parser.add_argument('-c', '--crit', type=int, default=5,
+                        help='Number of out-of-sync or unreachable zones ' +
+                        'for a critical status')
+    parser.add_argument('-t', '--timeout', type=int, default=2,
+                        help='Timeout for dig')
+
+    args = vars(parser.parse_args())
+
+    # Fetch zones
+    try:
+        zones = subprocess.check_output(args['list_cmd'], shell=True) \
+                          .decode('UTF-8').strip().split('\n')
+    except subprocess.CalledProcessError as ex:
+        ret['state'] = 'UNKNOWN'
+        ret['output'] = 'List command failed with code {}' \
+                        .format(ex.returncode)
+        ret['details'] = ex.output.decode('UTF-8')
+        return
+
+    # Iterate over zones
+    threads = []
+    details = []
+    nZones = 0
+    for zone in zones:
+        thread = Thread(target=handleMaster, args=[
+            zone,
+            args['initial_host'],
+            args['initial_port'],
+            args['timeout'],
+            details
+        ])
+        threads.append(thread)
+        thread.start()
+        nZones += 1
+
+    # Wait for all zone checks
+    for thread in threads:
+        thread.join()
+
+    # Process results
+    if nDesyncZones == 1:
+        ret['output'] = '1 zone is out of sync'
+    elif nDesyncZones > 1:
+        ret['output'] = '{} zones are out of sync'.format(nDesyncZones)
+    else:
+        ret['output'] = 'All zones are in sync'
+
+    if nDesyncZones >= args['warn']:
+        ret['state'] = 'WARNING'
+    if nDesyncZones >= args['crit']:
+        ret['state'] = 'CRITICAL'
+
+    ret['details'] = '\n'.join(details)
+
+    # Process perfdata
+    ret['perfdata'] = 'desyncZones={};{};{};0;{}' \
+                      .format(nDesyncZones, args['warn'], args['crit'], nZones)
+
+
+doCheck(check)
