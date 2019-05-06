@@ -39,6 +39,7 @@
   with_items:
     - dns_recursion
     - dns_repl
+    - dnssec
     - free
     - hddtemp
     - jenkins

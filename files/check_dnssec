@@ -1,0 +1,127 @@
+#!/usr/bin/env python3
+
+# Checks whether DNSSEC of a list of zones is valid.
+#
+# optional arguments:
+#   -h, --help            show this help message and exit
+#   -l LIST_CMD, --list-cmd LIST_CMD
+#                         Shell list command for zones
+#   -H HOST, --host HOST  Host to contact
+#   -p PORT, --port PORT  Port to connect to
+#   -t TIMEOUT, --timeout TIMEOUT
+#                         Timeout for dig
+
+
+import argparse
+import subprocess
+from threading import Thread, Lock
+from common import doCheck
+
+
+nInvalidZones = 0
+nInvalidZonesLock = Lock()
+nUnknownZones = 0
+nUnknownZonesLock = Lock()
+
+
+def handleZone(zone, host, port, timeout, details):
+    global nInvalidZones, nInvalidZonesLock
+    global nUnknownZones, nUnknownZonesLock
+
+    cmd = ['dig', '-p', str(port), '+timeout=' + str(timeout), '+noall',
+           '+comments', '+dnssec', zone, '@' + host]
+    try:
+        out = subprocess.check_output(cmd, stderr=subprocess.DEVNULL) \
+              .decode('UTF-8')
+    except subprocess.CalledProcessError as ex:
+        details.append('Dig returned {} for zone {}'
+                       .format(ex.returncode, zone))
+        with nUnknownZonesLock:
+            nUnknownZones += 1
+        return
+
+    if 'ad;' not in out:
+        details.append('Zone {} does not return authenticated data.'
+                       .format(zone))
+        with nInvalidZonesLock:
+            nInvalidZones += 1
+
+
+def check(ret):
+    global nInvalidZones, nInvalidZonesLock
+    global nUnknownZones, nUnknownZonesLock
+
+    ret['name'] = 'dnssec'
+
+    parser = argparse.ArgumentParser(
+        prog='check_dnssec',
+        description='Checks whether DNSSEC of a list of zones is valid.')
+    parser.add_argument('-l', '--list-cmd', type=str, required=True,
+                        help='Shell list command for zones')
+    parser.add_argument('-H', '--host', type=str, default='127.0.0.1',
+                        help='Host to contact')
+    parser.add_argument('-p', '--port', type=int, default=53,
+                        help='Port to connect to')
+    parser.add_argument('-t', '--timeout', type=int, default=2,
+                        help='Timeout for dig')
+
+    args = vars(parser.parse_args())
+
+    # Fetch zones
+    # Fetch zones
+    try:
+        zones = subprocess.check_output(args['list_cmd'], shell=True) \
+                          .decode('UTF-8').strip().split('\n')
+    except subprocess.CalledProcessError as ex:
+        ret['state'] = 'UNKNOWN'
+        ret['output'] = 'List command failed with code {}' \
+                        .format(ex.returncode)
+        ret['details'] = ex.output.decode('UTF-8')
+        return
+
+    # Iterate over zones
+    threads = []
+    details = []
+    nZones = 0
+    for zone in zones:
+        thread = Thread(target=handleZone, args=[
+            zone,
+            args['host'],
+            args['port'],
+            args['timeout'],
+            details
+        ])
+        threads.append(thread)
+        thread.start()
+        nZones += 1
+
+    # Wait for all zone checks
+    for thread in threads:
+        thread.join()
+
+    # Process results
+    ret['output'] = 'All zones have valid DNSSEC'
+    ret['details'] = '\n'.join(details)
+    if nUnknownZones == 1:
+        ret['output'] = '1 zone is in an unknown state'
+        ret['state'] = 'UNKNOWN'
+    elif nUnknownZones > 1:
+        ret['output'] = '{} zones are in an unknown state' \
+                        .format(nUnknownZones)
+        ret['state'] = 'UNKNOWN'
+
+    if nInvalidZones == 1:
+        ret['output'] = '1 zone has invalid DNSSEC'
+        ret['state'] = 'CRITICAL'
+    elif nInvalidZones > 1:
+        ret['output'] = '{} zones have invalid DNSSEC'.format(nUnknownZones)
+        ret['state'] = 'CRITICAL'
+
+    # Process perfdata
+    ret['perfdata'] = 'invalidZones={};{};{};0;{}' \
+                      .format(nInvalidZones, 0, 1, nZones)
+    ret['perfdata'] += ' unknownZones={};{};{};0;{}' \
+                       .format(nUnknownZones, 0, 1, nZones)
+
+
+doCheck(check)
