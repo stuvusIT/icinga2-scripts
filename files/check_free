@@ -7,6 +7,7 @@
 # -c - Amount of memory that has to be available to not fail the check with a critical status (defaults to 5%)
 # -w - Amount of memory that has to be available to not fail the check with a warning status (defaults to 10%)
 
+# shellcheck source=common.sh
 . "$(dirname "${0}")/common.sh"
 checkName=memory
 
@@ -20,7 +21,7 @@ warn=10%
 crit=5%
 
 usage() {
-	echo "Usage ${0} -w<warning> -c <critical>"
+	echo "Usage: ${0} -w <warning> -c <critical>"
 	exit 3
 }
 
