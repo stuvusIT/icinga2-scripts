@@ -25,7 +25,7 @@ Currently, the following scripts are installed:
 
 ## Requirements
 
-Ubuntu
+Debian
 
 ## Role Variables
 

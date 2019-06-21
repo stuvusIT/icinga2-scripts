@@ -5,13 +5,12 @@ galaxy_info:
 
   license: CC-BY-SA
 
-  min_ansible_version: 2.4
+  min_ansible_version: 2.7
 
   platforms:
-    - name: Ubuntu
+    - name: Debian
       versions:
-        - xenial
-        - bionic
+        - stretch
 
   galaxy_tags:
     - icinga
