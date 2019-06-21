@@ -1,0 +1,88 @@
+#!/usr/bin/env bash
+
+# Checks whether too many mailboxes failed to replicate and returns
+# queue details via perfdata.
+#
+# Parameters:
+# -c: - Amount of failed replications to fail with a critical status (defaults to 20)
+# -w: - Amount of failed replications to fail with a warning status (defaults to 10)
+
+# shellcheck source=common.sh
+. "$(dirname "${0}")/common.sh"
+checkName=dsync
+checkState=OK
+checkOutput='All mailboxes are successfully replicated'
+
+# Parse parameters
+warn=10
+crit=20
+
+usage() {
+	echo "Usage: ${0} -w <warning> -c <critical>"
+	exit 3
+}
+
+while getopts ":w:c:" opt; do
+	case "${opt}" in
+		c)
+			crit="${OPTARG}"
+			;;
+		w)
+			warn="${OPTARG}"
+			;;
+		\?)
+			echo "Invalid option: -${OPTARG}"
+			usage
+			;;
+		:)
+			echo "Option -${OPTARG} requires and argument"
+			usage
+			;;
+	esac
+done
+
+# Parse output
+while IFS= read -r line; do
+	line="$(echo "${line}" | xargs)"
+
+	case "${line}" in
+		Queued\ sync*)
+			nSync="$(echo "${line}" | grep -o '[^ ]*$')"
+			;;
+		Queued\ high*)
+			nHigh="$(echo "${line}" | grep -o '[^ ]*$')"
+			;;
+		Queued\ low*)
+			nLow="$(echo "${line}" | grep -o '[^ ]*$')"
+			;;
+		Waiting\ failed*)
+			nFailed="$(echo "${line}" | grep -o '[^ ]*$')"
+			;;
+		Queued\ full\ resync*)
+			nFull="$(echo "${line}" | grep -o '[^ ]*$')"
+			;;
+		Total\ number*)
+			nTotal="$(echo "${line}" | grep -o '[^ ]*$')"
+			;;
+	esac
+done < <(doveadm replicator status)
+
+# Format perfdata
+checkPerfdata="nSync=${nSync};;;0;${nTotal}"
+checkPerfdata="${checkPerfdata} nHigh=${nHigh};;;0;${nTotal}"
+checkPerfdata="${checkPerfdata} nLow=${nLow};;;0;${nTotal}"
+checkPerfdata="${checkPerfdata} nFailed=${nFailed};${warn};${crit};0;${nTotal}"
+checkPerfdata="${checkPerfdata} nFull=${nFull};;;0;${nTotal}"
+
+# Format state and output
+if [ "${nFailed}" -ge "${warn}" ]; then
+	checkState=WARNING
+fi
+if [ "${nFailed}" -ge "${crit}" ]; then
+	checkState=CRITICAL
+fi
+if [ "${nFailed}" -gt 0 ]; then
+	checkOutput="${nFailed} mailboxes failed to replicate"
+fi
+
+checkReturn

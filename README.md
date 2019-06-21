@@ -7,6 +7,7 @@ Currently, the following scripts are installed:
 - `check_dns_recursion` - Checks whether random domain names are successfully recursed.
 - `check_dns_repl` - Checks whether DNS zones are successfully replicated.
 - `check_dnssec` - Checks whether a zone returns valid authenticated data.
+- `check_dsync` - Checks whether dovecot mailboxes failed to replicate.
 - `check_free` - Checks if the machine has enough available memory.
 - `check_hddtemp` - Checks the temperature of all attached SCSI-like devices.
 - `check_jenkins` - Checks a Jenkins instance via the [Metrics plugin](https://wiki.jenkins.io/display/JENKINS/Metrics+Plugin).
