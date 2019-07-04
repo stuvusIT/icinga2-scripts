@@ -63,17 +63,25 @@ def check(ret):
             ret['output'] = "Value {} for key {} is not in range [0, 100].".format(args[arg_key], arg_key)
             return
 
-    # List pools
     zpoolListCommand = ['zpool', 'list']
+    zpoolStatusCommand = ['zpool', 'status']
     if args['pool'] is not None:
         zpoolListCommand.append(args['pool'])
-    childProcess = subprocess.Popen(zpoolListCommand, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+        zpoolStatusCommand.append(args['pool'])
+    # List pools
+    zpoolListProcess = subprocess.Popen(zpoolListCommand, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                     stderr=subprocess.PIPE)
-    zpoolListOutput = childProcess.communicate()[0]
+    zpoolListOutput = zpoolListProcess.communicate()[0].decode('UTF-8')
 
-    if childProcess.returncode is not 0:
+    if zpoolListProcess.returncode is not 0:
         raiseState('UNKNOWN', ret)
-        ret['output'] = '`{}` failed with return code {}.'.format(' '.join(zpoolListCommand), childProcess.returncode)
+        ret['output'] = '`{}` failed with return code {}.'.format(' '.join(zpoolListCommand), zpoolListProcess.returncode)
+        ret['details'] = zpoolListOutput
+        return
+
+    if 'NAME' not in zpoolListOutput:
+        raiseState('UNKNOWN', ret)
+        ret['output'] = '{} command returned unexpected output'.format(' '.join(zpoolListCommand))
         ret['details'] = zpoolListOutput
         return
 
@@ -83,7 +91,7 @@ def check(ret):
 
     zpoolState = {}
     for index, key in enumerate(zpoolHeaders):
-        zpoolState[key.decode('UTF-8')] = zpoolValues[index].decode('UTF-8')
+        zpoolState[key] = zpoolValues[index]
 
     capPercent = int(zpoolState['CAP'].replace("%", ""))
     fragPercent = int(zpoolState['FRAG'].replace("%", ""))
@@ -113,8 +121,14 @@ def check(ret):
     elif capPercent >= args['capacity_warn'] or fragPercent >= args['fragmentation_warn']:
         raiseState('WARNING', ret)
 
+    # Check zpool status to get data error information
+    zpoolStatusProcess = subprocess.Popen(zpoolStatusCommand, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                    stderr=subprocess.PIPE)
+    zpoolStatusOutput = zpoolStatusProcess.communicate()[0]
+    dataErrorText = zpoolStatusOutput.decode('UTF-8').splitlines()[-1][8:]
+
     ret['output'] = 'Pool {} is {}.'.format(zpoolState['NAME'], zpoolState['HEALTH'])
-    ret['details'] = 'Capacity is at {}%. Fragmentation is at {}%.'.format(capPercent, fragPercent)
+    ret['details'] = 'Capacity is at {}%. Fragmentation is at {}%. {}.'.format(capPercent, fragPercent, dataErrorText)
 
 
 doCheck(check)
