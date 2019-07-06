@@ -1,0 +1,105 @@
+#!/usr/bin/env python3
+
+# Author: Michel Weitbrecht (michel.weitbrecht@stuvus.uni-stuttgart.de)
+
+import subprocess
+import argparse
+import time
+from common import doCheck
+
+
+def check(ret):
+  ret['name'] = 'zfs-snapshot'
+
+  parser = argparse.ArgumentParser(
+    prog='check_zfs_snapshot',
+    description='Check the existence and age of ZFS snapshots.')
+  parser.add_argument('-w', '--age-warn',
+                      help="Return WARNING if the most recent snapshot is older than this value in minutes (default: 1440)",
+                      type=int,
+                      default=1440)
+  parser.add_argument('-c', '--age-crit',
+                      help="Return CRITICAL if the most recent snapshot is older than this value in minutes (default: 2880)",
+                      type=int,
+                      default=2880)
+  parser.add_argument('-l', '--list-cmd',
+                      help="Shell commmand to list the datasets to be checked (default: all datasets)", type=str,
+                      default="zfs list | cut -d' ' -f 1 | tail -n +2")
+
+  args = vars(parser.parse_args())
+
+  try:
+    datasets = subprocess.check_output(args['list_cmd'], shell=True).decode('UTF-8').strip().split('\n')
+  except subprocess.CalledProcessError as ex:
+    ret['state'] = 'UNKNOWN'
+    ret['output'] = 'List command failed with code {}'.format(ex.returncode)
+    ret['details'] = ex.output.decode('UTF-8')
+    return
+
+  # Filter out empty strings
+  datasets = [d for d in datasets if d]
+
+  if len(datasets) == 0:
+    ret['output'] = 'No datasets specified.'
+    return
+
+  warnAge = args['age_warn']
+  critAge = args['age_crit']
+  warnCount = 0
+  critCount = 0
+
+  checkTime = int(time.time())
+
+  for dataset in datasets:
+    # List snapshots (H: script mode, p: parsable, d: depth, -o: properties, -S: sort descending, -t: dataset types)
+    zfsListCommand = ['zfs', 'list', '-Hp', '-d', '1', '-o', 'name,creation', '-S', 'creation', '-t', 'snapshot',
+                      dataset]
+    childProcess = subprocess.Popen(zfsListCommand, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                    stderr=subprocess.PIPE)
+    zfsListOutput = childProcess.communicate()[0]
+
+    if childProcess.returncode is not 0:
+      ret['state'] = 'UNKNOWN'
+      ret['output'] = '`{}` failed with return code {}.'.format(' '.join(zfsListCommand), childProcess.returncode)
+      ret['details'] = zfsListOutput
+      return
+
+    zfsLines = zfsListOutput.splitlines()
+
+    if len(zfsLines) == 0:
+      ret['state'] = 'CRITICAL'
+      ret['details'] += '{} has no snapshots.\n'.format(dataset)
+      ret['perfdata'] += '{}={}s;{};{};0;{} '.format(dataset, critAge * 3 * 60, warnAge * 60, critAge * 60,
+                                                     critAge * 60)
+      critCount += 1
+      continue
+
+    # snapshots are sorted by decreasing creation date -> first line is the newest
+    snapshotValues = zfsLines[0].decode().split('\t')
+    snapshotName = snapshotValues[0]
+    snapshotTime = int(snapshotValues[1])
+    snapshotAge = int((checkTime - snapshotTime) / 60)
+
+    if snapshotAge >= critAge:
+      ret['details'] += '{} is {} minutes old.\n'.format(snapshotName, snapshotAge)
+      critCount += 1
+    elif snapshotAge >= warnAge:
+      ret['details'] += '{} is {} minutes old.\n'.format(snapshotName, snapshotAge)
+      warnCount += 1
+
+    # icinga2 does not support a minutes unit
+    ret['perfdata'] += '{}={}s;{};{};0;{} '.format(dataset, snapshotAge * 60, warnAge * 60, critAge * 60, critAge * 60)
+
+  if critCount > 0 or warnCount > 0:
+    ret['output'] = ''
+  else:
+    ret['output'] = 'Recent snapshots exist for the specified datasets.'
+  if critCount > 0:
+    ret['state'] = 'CRITICAL'
+    ret['output'] = '{} datasets have no snapshot newer than {} minutes.'.format(critCount, critAge)
+  if warnCount > 0:
+    ret['state'] = 'WARNING'
+    ret['output'] += '{} datasets have no snapshot newer than {} minutes.'.format(warnCount, warnAge)
+
+
+doCheck(check)

@@ -51,6 +51,7 @@
     - tty
     - unifi
     - zfs
+    - zfs_snapshot
     - zpool_scrub
 
 - name: Copy notification scripts
