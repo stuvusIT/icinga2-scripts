@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+
+# Checks the temperature in the server rack and outputs the results as perfdata.
+#
+# Parameters:
+# -c - Temperature that is critical (defaults to 40°C)
+# -w - Temperature that is warning (defaults to 30°C)
+# -h - IP or hostname of server rack monitoring brick
+# -u - UID of sensor in server rack
+
+# shellcheck source=common.sh
+. "$(dirname "${0}")/common.sh"
+checkName=server_rack_temperature
+
+# Parameters
+warn=30
+crit=40
+
+usage() {
+	echo "Usage: ${0} -h <host> -u <uid> -w <warning> -c <critical>"
+	exit 3
+}
+
+# Check if we can use commas in --format
+format='--format=%f'
+set +e
+if numfmt --format=%.2f 10 &>/dev/null; then
+	format='--format=%.2f'
+fi
+set -e
+
+# Parse parameters
+while getopts ":w:c:h:u:" opt; do
+	case "${opt}" in
+		c)
+			crit="${OPTARG}"
+			;;
+		w)
+			warn="${OPTARG}"
+			;;
+		h)
+			host="${OPTARG}"
+			;;
+		u)
+			uid="${OPTARG}"
+			;;
+		\?)
+			echo "Invalid option: -${OPTARG}"
+			usage
+			;;
+		:)
+			echo "Option -${OPTARG} requires an argument"
+			usage
+			;;
+	esac
+done
+
+temp=$(bc <<< "$($(dirname "${0}")/tinkerforge --host $host call temperature-bricklet $uid get-temperature | cut -d "=" -f 2)/100")
+# Format output
+set -x
+if [ "${temp}" -gt "${crit}" ]; then
+	checkState=CRITICAL
+elif [ "${temp}" -gt "${warn}" ]; then
+	checkState=WARNING
+fi
+checkOutput="${temp} °C"
+
+# Format perfdata
+checkPerfdata="temperature=${temp}°C;${warn};${crit}"
+
+checkReturn

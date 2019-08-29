@@ -29,6 +29,16 @@
     - common.py
     - common.sh
 
+- name: Copy check scripts dependencies
+  copy:
+    src: "{{ item }}"
+    dest: "{{ icinga2_scripts_path }}"
+    mode: 0755
+    owner: root
+    group: root
+  with_items:
+    - tinkerforge
+
 - name: Copy check scripts
   copy:
     src: "check_{{ item }}"
@@ -53,6 +63,7 @@
     - zfs
     - zfs_snapshot
     - zpool_scrub
+    - server_rack_temperature
 
 - name: Copy notification scripts
   copy:
