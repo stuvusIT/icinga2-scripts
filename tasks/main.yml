@@ -64,6 +64,7 @@
     - zfs_snapshot
     - zpool_scrub
     - server_rack_temperature
+    - server_rack_intake_temperature
     - server_rack_humidity
 
 - name: Copy notification scripts
