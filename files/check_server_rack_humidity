@@ -10,11 +10,11 @@
 
 # shellcheck source=common.sh
 . "$(dirname "${0}")/common.sh"
-checkName=server_rack_temperature
+checkName=server_rack_humidity
 
 # Parameters
-warn=30
-crit=40
+warn=55
+crit=60
 
 usage() {
 	echo "Usage: ${0} -h <host> -u <uid> -w <warning> -c <critical>"
@@ -47,16 +47,16 @@ while getopts ":w:c:h:u:" opt; do
 	esac
 done
 
-temp=$(bc <<< "$($(dirname "${0}")/tinkerforge --host $host call temperature-bricklet $uid get-temperature | cut -d "=" -f 2)/100")
+humidity=$(bc <<< "$($(dirname "${0}")/tinkerforge --host $host call humidity-v2-bricklet $uid get-humidity | cut -d "=" -f 2)/100")
 # Format output
-if [ "${temp}" -gt "${crit}" ]; then
+if [ "${humidity}" -gt "${crit}" ]; then
 	checkState=CRITICAL
-elif [ "${temp}" -gt "${warn}" ]; then
+elif [ "${humidity}" -gt "${warn}" ]; then
 	checkState=WARNING
 fi
-checkOutput="${temp} °C"
+checkOutput="${humidity}%"
 
 # Format perfdata
-checkPerfdata="temperature=${temp}°C;${warn};${crit}"
+checkPerfdata="humidity=${humidity}%;${warn};${crit};0;100"
 
 checkReturn
