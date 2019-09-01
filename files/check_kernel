@@ -5,6 +5,7 @@
 # Parameters:
 # -k - Path of the kernel (defaults to /vmlinuz)
 
+# shellcheck source=common.sh
 . "$(dirname "${0}")/common.sh"
 checkName=kernel
 checkOutput='Kernel is up to date.'
@@ -45,9 +46,10 @@ if [ -f "${kernel}" ]; then
 		[ "${part}" = version ] && found=1
 	done
 
-	if ! [ -z "${infile}" ]; then
+	if [ -n "${infile}" ]; then
 		if [ "${infile}" != "${inmem}" ]; then
 			checkOutput="Kernel ${infile} is out, time to reboot."
+			checkDetails="You are still running version ${inmem}."
 			checkState=CRITICAL
 		fi
 	else
