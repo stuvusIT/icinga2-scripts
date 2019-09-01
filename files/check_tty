@@ -6,7 +6,9 @@
 # -c - Amount of minutes until the check is critical (defaults to 30)
 # -w - Amount of minutes until the check is in a warning state (defaults to 20)
 
+# shellcheck source=common.sh
 . "$(dirname "${0}")/common.sh"
+# shellcheck disable=2209
 checkName=tty
 
 # Parameters

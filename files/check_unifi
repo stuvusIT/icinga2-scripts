@@ -11,6 +11,7 @@
 # Environment:
 # UNIFI_PASSWORD - Password to connect with
 
+# shellcheck source=common.sh
 . "$(dirname "${0}")/common.sh"
 checkName=unifi
 
