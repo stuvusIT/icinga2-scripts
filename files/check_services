@@ -6,6 +6,7 @@
 # -c - Amount of services that need to be failed in order to return a critical state (defaults to 1)
 # -w - Amount of services that need to be failed in order to return a warning state (defaults to 1)
 
+# shellcheck source=common.sh
 . "$(dirname "${0}")/common.sh"
 checkName=services
 

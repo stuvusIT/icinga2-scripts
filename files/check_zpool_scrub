@@ -46,6 +46,7 @@ ctime_to_timestamp() {
 # Global variables
 ########################################################################
 
+# shellcheck source=common.sh
 . "$(dirname "${0}")/common.sh"
 
 checkName=zpool-scrub
@@ -91,7 +92,7 @@ OPT_CRITICAL=5356800
 
 parse_parameters() {
 	local OPT
-	while getopts ':c:hp:svw:-:' OPT ; do
+	while getopts ':c:hp:w:-:' OPT ; do
 		case $OPT in
 			c) OPT_CRITICAL=$OPTARG ;;
 			h) echo "$USAGE" ; exit 0 ;;
@@ -99,12 +100,12 @@ parse_parameters() {
 			w) OPT_WARNING=$OPTARG ;;
 
 			\?)
-				echo "Invalid option “-$OPTARG”!" >&2
+				echo "Invalid option -$OPTARG!" >&2
 				exit 2
 				;;
 
 			:)
-				echo "Option “-$OPTARG” requires an argument!" >&2
+				echo "Option -$OPTARG requires an argument!" >&2
 				exit 3
 				;;
 
@@ -131,12 +132,12 @@ parse_parameters() {
 						;;
 
 					help*)
-						echo "No argument allowed for the option “--$OPTARG”!" >&2
+						echo "No argument allowed for the option --$OPTARG!" >&2
 						exit 4
 						;;
 
 					critical*|pool*|warning*)
-						echo "Option “--$OPTARG” requires an argument!" >&2
+						echo "Option --$OPTARG requires an argument!" >&2
 						exit 3
 						;;
 
@@ -145,7 +146,7 @@ parse_parameters() {
 						;;
 
 					*)
-						echo "Invalid option “--$OPTARG”!" >&2
+						echo "Invalid option --$OPTARG!" >&2
 						exit 2
 						;;
 
@@ -271,7 +272,7 @@ progress_grep() {
 }
 
 progress_normalize() {
-	echo $1 | \
+	echo "$1" | \
 		sed 's/%//' | \
 		tr ',' '.'
 }
@@ -298,6 +299,7 @@ speed_normalize() {
 	local SPEED UNIT
 	SPEED=$(echo "$1" | sed 's#/s##' | tr , .)
 	UNIT=$(echo -n "$SPEED" | tail -c  1)
+	# shellcheck disable=SC2001
 	SPEED=$(echo "$SPEED" | sed 's/.$//' )
 
 	if [ "$UNIT" = K ]; then
@@ -357,7 +359,7 @@ time_grep() {
 
 time_to_min() {
 	local HOURS MIN
-	HOURS=$(echo "$1" | sed 's/h.*//')
+	HOURS="${1//h*/}"
 	MIN=$(echo "$1" | sed 's/.*h//' | sed 's/m//')
 	echo $((HOURS * 60 + MIN))
 }
@@ -419,14 +421,14 @@ check_one_pool() {
 $(performance_data_one_pool \
 		"${POOL}" "${DIFF}" "${PROGRESS}" "${SPEED}" "${TIME}")"
 	checkOutput="${checkOutput}The last scrub on zpool '${POOL}' was \
-performed on $(timestamp_to_datetime $LAST_SCRUB)."
+performed on $(timestamp_to_datetime "$LAST_SCRUB")."
 
 }
 
 check_multiple_pools() {
 	local POOL GLOBAL_STATE=OK
 
-	for POOL in $@; do
+	for POOL in "${@}"; do
 		check_one_pool "$POOL"
 		# If one pool is critical the global state turns to
 		# critical.
@@ -446,7 +448,7 @@ check_multiple_pools() {
 	checkState="$GLOBAL_STATE"
 }
 
-parse_parameters $@
+parse_parameters "${@}"
 
 if [ "$OPT_WARNING" -gt "$OPT_CRITICAL" ]; then
 	echo '<warntime> must be smaller than <crittime>.' >&2

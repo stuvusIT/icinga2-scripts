@@ -6,6 +6,7 @@
 # -h - Host to connect to (default: http://localhost:8080)
 # -a - API key (must have at least the "Health Check" permission
 
+# shellcheck source=common.sh
 . "$(dirname "${0}")/common.sh"
 checkName=jenkins
 

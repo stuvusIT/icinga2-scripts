@@ -49,6 +49,7 @@ checkReturn() {
 		checkPerfdata=" | ${checkPerfdata}"
 	fi
 	
+	# shellcheck disable=SC2154
 	echo "${checkName} ${checkState}: ${checkOutput}${checkPerfdata}"
 	[ -n "${checkDetails}" ] && echo "${checkDetails}" | tr -d '|'
 
