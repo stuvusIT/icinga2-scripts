@@ -14,6 +14,8 @@ def check(ret):
                         help='Hostname to connect to')
     parser.add_argument('-p', '--port', dest='port', default=6379, type=int,
                         help='Port to connect to')
+    parser.add_argument('-s', '--socket', dest='socket', default=None,
+                        help='Unix socket to connect to instead of AF_INET')
     parser.add_argument('-w', '--warning', dest='warn', type=int, default=5,
                         help='Seconds until check is warning')
     parser.add_argument('-c', '--critical', dest='crit', type=int, default=10,
@@ -26,12 +28,19 @@ def check(ret):
     to_send = 'info\n quit'
 
     socket.setdefaulttimeout(options.timeout)
-    s = socket.socket()
+    if options.socket is None:
+        s = socket.socket()
+    else:
+        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     try:
         t1 = time.time()
 
         # Establish connection
-        s.connect((options.host, options.port))
+        if options.socket is None:
+            s.connect((options.host, options.port))
+        else:
+            s.connect(options.socket)
+
         # Send request
         sent_bytes = s.send(to_send.encode())
         if sent_bytes != len(to_send):
