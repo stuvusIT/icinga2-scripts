@@ -54,7 +54,7 @@ if [ "${humidity}" -gt "${crit}" ]; then
 elif [ "${humidity}" -gt "${warn}" ]; then
 	checkState=WARNING
 fi
-checkOutput="${humidity}%"
+checkOutput="Humidity is ${humidity}%"
 
 # Format perfdata
 checkPerfdata="humidity=${humidity}%;${warn};${crit};0;100"
