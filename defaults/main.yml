@@ -1,3 +1,4 @@
 ---
 icinga2_scripts_path: /usr/lib/stuvus/icinga
 icinga2_needs_notification_scripts: false
+icinga2_needs_tinkerforge: false

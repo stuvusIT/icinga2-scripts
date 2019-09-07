@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Checks the temperature in the server rack and outputs the results as perfdata.
+# Checks if the light is on in the server room. Using the Tinkerforge ambient light bricklet
 #
 # Parameters:
 # -c - Temperature that is critical (defaults to 40°C)
@@ -10,11 +10,11 @@
 
 # shellcheck source=common.sh
 . "$(dirname "${0}")/common.sh"
-checkName=server_rack_intake_temperature
+checkName=server_rack_light
 
 # Parameters
-warn=30
-crit=40
+warn=55
+crit=60
 
 usage() {
 	echo "Usage: ${0} -h <host> -u <uid> -w <warning> -c <critical>"
@@ -47,16 +47,16 @@ while getopts ":w:c:h:u:" opt; do
 	esac
 done
 
-temp=$(bc <<< "$($(dirname "${0}")/tinkerforge --host $host call  ptc-v2-bricklet $uid get-temperature | cut -d "=" -f 2)/100")
+light=$($(dirname "${0}")/tinkerforge --host $host call  ambient-light-v3-bricklet $uid get-illuminance | cut -d "=" -f 2)
 # Format output
-if [ "${temp}" -gt "${crit}" ]; then
+if [ "${light}" -gt "${crit}" ]; then
 	checkState=CRITICAL
-elif [ "${temp}" -gt "${warn}" ]; then
+elif [ "${light}" -gt "${warn}" ]; then
 	checkState=WARNING
 fi
-checkOutput="${temp} °C"
+checkOutput="${light} Lux"
 
 # Format perfdata
-checkPerfdata="temperature=${temp}°C;${warn};${crit}"
+checkPerfdata="light=${light}Lux;${warn};${crit};0;900"
 
 checkReturn

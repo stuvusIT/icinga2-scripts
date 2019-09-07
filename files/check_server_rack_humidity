@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 
-# Checks the temperature in the server rack and outputs the results as perfdata.
+# Checks the humidity in the server rack and outputs the results as perfdata. Sensor used is the tinkerforge bricklet for humidity.
 #
 # Parameters:
-# -c - Temperature that is critical (defaults to 40°C)
-# -w - Temperature that is warning (defaults to 30°C)
+# -c - Humidity that is critical (defaults to 55%)
+# -w - Humidity that is warning (defaults to 60%)
 # -h - IP or hostname of server rack monitoring brick
 # -u - UID of sensor in server rack
 
@@ -47,7 +47,7 @@ while getopts ":w:c:h:u:" opt; do
 	esac
 done
 
-humidity=$(bc <<< "$($(dirname "${0}")/tinkerforge --host $host call humidity-v2-bricklet $uid get-humidity | cut -d "=" -f 2)/100")
+humidity="$(bc <<< "$($(dirname "${0}")/tinkerforge --host $host call humidity-v2-bricklet $uid get-humidity | cut -d "=" -f 2)/100")"
 # Format output
 if [ "${humidity}" -gt "${crit}" ]; then
 	checkState=CRITICAL

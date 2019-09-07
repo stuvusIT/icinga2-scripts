@@ -38,6 +38,7 @@
     group: root
   with_items:
     - tinkerforge
+  when: icinga2_needs_tinkerforge
 
 - name: Copy check scripts
   copy:
@@ -57,15 +58,14 @@
     - kernel
     - rdp
     - redis
+    - server_rack_temperature
+    - server_rack_humidity
     - services
     - tty
     - unifi
     - zfs
     - zfs_snapshot
     - zpool_scrub
-    - server_rack_temperature
-    - server_rack_intake_temperature
-    - server_rack_humidity
 
 - name: Copy notification scripts
   copy:

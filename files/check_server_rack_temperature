@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 
-# Checks the temperature in the server rack and outputs the results as perfdata.
+# Checks the temperature in the server rack and outputs the results as perfdata. Sensors possible are the tinkerforge temperature 2.0 bricklet and their PTC bricklet.
 #
 # Parameters:
 # -c - Temperature that is critical (defaults to 40°C)
 # -w - Temperature that is warning (defaults to 30°C)
+# -b - bricklet-type to use
 # -h - IP or hostname of server rack monitoring brick
 # -u - UID of sensor in server rack
 
@@ -17,18 +18,21 @@ warn=30
 crit=40
 
 usage() {
-	echo "Usage: ${0} -h <host> -u <uid> -w <warning> -c <critical>"
+	echo "Usage: ${0} -h <host> -u <uid> -b <bricklet> -w <warning> -c <critical>"
 	exit 3
 }
 
 # Parse parameters
-while getopts ":w:c:h:u:" opt; do
+while getopts ":w:c:h:u:b:" opt; do
 	case "${opt}" in
 		c)
 			crit="${OPTARG}"
 			;;
 		w)
 			warn="${OPTARG}"
+			;;
+		b)
+			bricklet="${OPTARG}"
 			;;
 		h)
 			host="${OPTARG}"
@@ -47,7 +51,7 @@ while getopts ":w:c:h:u:" opt; do
 	esac
 done
 
-temp=$(bc <<< "$($(dirname "${0}")/tinkerforge --host $host call temperature-bricklet $uid get-temperature | cut -d "=" -f 2)/100")
+temp="$(bc <<< "$($(dirname "${0}")/tinkerforge --host $host call $bricklet $uid get-temperature | cut -d "=" -f 2)/100")"
 # Format output
 if [ "${temp}" -gt "${crit}" ]; then
 	checkState=CRITICAL
