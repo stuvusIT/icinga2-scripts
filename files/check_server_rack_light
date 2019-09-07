@@ -47,7 +47,7 @@ while getopts ":w:c:h:u:" opt; do
 	esac
 done
 
-light=$($(dirname "${0}")/tinkerforge --host $host call  ambient-light-v3-bricklet $uid get-illuminance | cut -d "=" -f 2)
+light="$($(dirname \"${0}\")/tinkerforge --host $host call  ambient-light-v3-bricklet $uid get-illuminance | cut -d \"=\" -f 2)"
 # Format output
 if [ "${light}" -gt "${crit}" ]; then
 	checkState=CRITICAL

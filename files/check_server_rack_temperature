@@ -51,7 +51,7 @@ while getopts ":w:c:h:u:b:" opt; do
 	esac
 done
 
-temp="$(bc <<< "$($(dirname "${0}")/tinkerforge --host $host call $bricklet $uid get-temperature | cut -d "=" -f 2)/100")"
+temp="$(bc <<< \"$($(dirname \"${0}\")/tinkerforge --host $host call $bricklet $uid get-temperature | cut -d \"=\" -f 2)/100\")"
 # Format output
 if [ "${temp}" -gt "${crit}" ]; then
 	checkState=CRITICAL

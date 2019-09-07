@@ -47,7 +47,7 @@ while getopts ":w:c:h:u:" opt; do
 	esac
 done
 
-humidity="$(bc <<< "$($(dirname "${0}")/tinkerforge --host $host call humidity-v2-bricklet $uid get-humidity | cut -d "=" -f 2)/100")"
+humidity="$(bc <<< \"$($(dirname \"${0}\")/tinkerforge --host $host call humidity-v2-bricklet $uid get-humidity | cut -d \"=\" -f 2)/100\")"
 # Format output
 if [ "${humidity}" -gt "${crit}" ]; then
 	checkState=CRITICAL
