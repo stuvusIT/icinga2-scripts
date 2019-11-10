@@ -14,6 +14,7 @@ Currently, the following scripts are installed:
 - `check_kernel` - Checks if the machine needs to be rebooted in order to apply a kernel update.
 - `check_rdp` - Checks if an RDP connection works.
 - `check_redis` - Checks if a connection to a Redis server can be established.
+- `check_server_rack` - Checks temperature, humidity and illuminance of a tinkerforge monitoring system
 - `check_services` - Checks if any systemd services failed (systemctl --failed).
 - `check_tty` - Checks if a TTY is idling for a long time.
 - `check_unifi` - Checks if all APs in a Unifi controller are reachable and up to date.
