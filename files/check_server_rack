@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+
+# Checks the value in the server rack and outputs the results as perfdata. Sensor used is the tinkerforge bricklet for value.
+#
+# Parameters:
+# -c - value that is critical (defaults to 55%)
+# -w - value that is warning (defaults to 60%)
+# -h - IP or hostname of server rack monitoring brick
+# -u - UID of sensor in server rack
+# -p - light, humidity, temperature
+
+# shellcheck source=common.sh
+. "$(dirname "${0}")/common.sh"
+checkName=server_rack
+
+# Parameters
+warn=0
+crit=0
+
+usage() {
+	echo "Usage: ${0} -h <host> -u <uid> -w <warning> -c <critical> -p <light|humidity|temperature>"
+	exit 3
+}
+
+# Parse parameters
+while getopts ":w:c:h:u:" opt; do
+	case "${opt}" in
+		c)
+			crit="${OPTARG}"
+			;;
+		w)
+			warn="${OPTARG}"
+			;;
+		h)
+			host="${OPTARG}"
+			;;
+		u)
+			uid="${OPTARG}"
+			;;
+		b)
+			bricklet="${OPTARG}"
+			;;
+		p)
+			parameter="${OPTARG}"
+			;;
+		\?)
+			echo "Invalid option: -${OPTARG}"
+			usage
+			;;
+		:)
+			echo "Option -${OPTARG} requires an argument"
+			usage
+			;;
+	esac
+done
+
+if [[ "${paramter}" == "light" ]]; then
+	bricklet_name="ambient-light-v3-bricklet"
+	bricklet_function_name="get-illuminance"
+	measurement_unit="Lux"
+	measurement_unit_max=900
+	measurement_unit_min=0
+	conversion_factor=1
+elif [[ "${paramter}" == "temperature" ]]; then
+	bricklet_name="${bricklet}"
+	bricklet_function_name="get-temperature"
+	measurement_unit="°C"
+	measurement_unit_max=150
+	measurement_unit_min=0
+	conversion_factor=100
+elif [[ "${paramter}" == "humidity" ]]; then
+	bricklet_name="humidity-v2-bricklet"
+	bricklet_function_name="get-humidity"
+	measurement_unit="%"
+	measurement_unit_max=100
+	measurement_unit_min=0
+	conversion_factor=100
+fi
+
+value="$(bc <<< \"$($(dirname \"${0}\")/tinkerforge --host $host call $bricklet_name $uid $bricklet_function_name | cut -d \"=\" -f 2)/$conversion_factor\")"
+# Format output
+if [ "${value}" -gt "${crit}" ]; then
+	checkState=CRITICAL
+elif [ "${value}" -gt "${warn}" ]; then
+	checkState=WARNING
+fi
+checkOutput="${parameter} is ${value}${measurement_unit}"
+
+# Format perfdata
+checkPerfdata="${parameter}=${value}${measurement_unit};${warn};${crit};${measurement_min};${measurement_max}"
+
+checkReturn

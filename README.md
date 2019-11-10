@@ -35,6 +35,7 @@ Debian
 |--------------------------------------|:------------------------:|-----------------------------------------------------|
 | `icinga2_scripts_path`               | `/usr/lib/stuvus/icinga` | Path where the scripts are installed to             |
 | `icinga2_needs_notification_scripts` | `false`                  | Whether to install the notification scripts as well |
+| `icinga2_needs_tinkerforge`          | `false`                  | Whether to install the tinkerforge api as well      |
 
 ## Example Playbook
 

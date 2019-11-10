@@ -29,6 +29,17 @@
     - common.py
     - common.sh
 
+- name: Copy check scripts dependencies
+  copy:
+    src: "{{ item }}"
+    dest: "{{ icinga2_scripts_path }}"
+    mode: 0755
+    owner: root
+    group: root
+  with_items:
+    - tinkerforge
+  when: icinga2_needs_tinkerforge
+
 - name: Copy check scripts
   copy:
     src: "check_{{ item }}"
@@ -47,6 +58,7 @@
     - kernel
     - rdp
     - redis
+    - server_rack
     - services
     - tty
     - unifi
