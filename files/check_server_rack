@@ -18,7 +18,7 @@ warn=0
 crit=0
 
 usage() {
-	echo "Usage: ${0} -h <host> -u <uid> -w <warning> -c <critical>"
+	echo "Usage: ${0} -h <host> -u <uid> -w <warning> -c <critical> -p <light|humidity|temperature>"
 	exit 3
 }
 
