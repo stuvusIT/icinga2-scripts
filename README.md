@@ -21,8 +21,10 @@ Currently, the following scripts are installed:
 - `check_zfs` - Checks the health, free space and fragmentation of a ZFS pool.
 - `check_zfs_snapshot` - Checks the age of the most-recent snapshot of ZFS datasets.
 - `check_zpool_scrub` - Checks if a scrub has been performed recently on ZFS pools.
+- `notify_host_matrix` - Notifies a host state in a Matrix channel.
 - `notify_host_mattermost` - Notifies a host state in a Mattermost channel.
 - `notify_host_msmtp` - Notifies a host state via msmtp mail.
+- `notify_service_matrix` - Notifies a service state in a Matrix channel.
 - `notify_service_mattermost` - Notifies a service state in a Mattermost channel.
 - `notify_service_msmtp` - Notifies a service state via msmtp mail.
 
