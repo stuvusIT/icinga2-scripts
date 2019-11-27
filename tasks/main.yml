@@ -74,8 +74,10 @@
     owner: root
     group: root
   with_items:
+    - host_matrix
     - host_mattermost
     - host_msmtp
+    - service_matrix
     - service_mattermost
     - service_msmtp
   when: icinga2_needs_notification_scripts

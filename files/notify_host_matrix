@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+
+# Notifies a host state in a Matrix room.
+# You can generate your token using:
+# curl -XPOST -d '{"type":"m.login.password", "user":"myuserid", "password":"mypass", "initial_device_display_name": "icinga2"}' "https://matrix.org/_matrix/client/r0/login"
+
+# Environment:
+# NOTIFICATIONTYPE - Type of the notification
+# HOSTNAME - Name of the host
+# HOSTSTATE - State of the host
+# ICINGAWEB_URL - URL to Icingaweb (Including https:// and with no trailing slash)
+# MATRIX_SERVER - Server to connect to (Including https:// and with no trailing slash)
+# MATRIX_ROOM - Matrix room ID
+# MATRIX_TOKEN - Matrix access token
+
+set -e
+set -o nounset
+set -o pipefail
+
+ok=✔️
+fail=✖️
+flapping=🔀
+
+if [ "${HOSTSTATE}" = UP ]; then
+	icon="${ok}"
+else
+	icon="${fail}"
+fi
+
+if [ "${NOTIFICATIONTYPE}" = FLAPPINGSTART ]; then
+	icon="${flapping}"
+fi
+
+msg="${icon} ${NOTIFICATIONTYPE}: Host <a href=\\\"${ICINGAWEB_URL}/dashboard#!monitoring/host/show?host=${HOSTNAME}\\\">${HOSTNAME}</a> is ${HOSTSTATE}"
+
+txn="$(date +%s)$(( RANDOM % 9999 ))"
+body="{ \"msgtype\": \"m.text\", \"body\": \"\", \"format\": \"org.matrix.custom.html\", \"formatted_body\": \"${msg}\" }"
+url="${MATRIX_SERVER}/_matrix/client/r0/rooms/${MATRIX_ROOM}/send/m.room.message/${txn}?access_token=${MATRIX_TOKEN}"
+
+curl -L -X PUT -H "Content-Type: application/json" --data "${body}" "${url}"
